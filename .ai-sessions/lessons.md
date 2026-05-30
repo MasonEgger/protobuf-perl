@@ -2,6 +2,7 @@
 
 ## Recent
 <!-- 10 most recent lessons, newest first -->
+- This dev box has core Perl 5.38 + `prove` + `just` only — no `Test2::Suite`, `perlcritic`, `dzil`, or `cpanm`. Smoke/unit tests must run on core `Test::More` to be verifiable offline; treat the plan's `Test2::V1` preamble as CI-only or gate it behind availability (2026-05-30)
 - When converting a TDD-depth spec to a plan, map each spec `T-` test ID onto exactly one RED sub-step so coverage is traceable to the spec, not invented (2026-05-30)
 - Layer a protobuf-library plan strictly bottom-up (Wire → Schema → Resolver → Codec → Parser → Class → JSON/WKT → Conformance → Codegen) so every step stands on a tested foundation with no forward references (2026-05-30)
 - Defer protoc differential/oracle tests to the step where the test graph can actually be built two independent ways (e.g. resolver-vs-protoc only after both parser and DescriptorSet exist), and make them `skip_all` when protoc is absent so offline `prove` still works (2026-05-30)

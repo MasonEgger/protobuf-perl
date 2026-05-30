@@ -1,0 +1,36 @@
+# ABOUTME: GitHub Actions CI for Proto3 — matrix over Perl versions and OSes.
+# Source of truth for supported environments (spec section 6).
+name: CI
+
+on:
+  push:
+    branches: [main, v1]
+  pull_request:
+
+jobs:
+  test:
+    name: perl ${{ matrix.perl }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        perl: ['5.38', '5.40']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Perl ${{ matrix.perl }}
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: ${{ matrix.perl }}
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install dependencies
+        run: |
+          cpanm --notest --installdeps .
+          cpanm --notest Perl::Critic Dist::Zilla
+
+      - name: Run checks
+        run: just check

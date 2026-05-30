@@ -8,17 +8,17 @@ work completes. Each step ends by running `just check`.
 ## Phase 0 — Scaffold + Wire
 
 ### Step 1: Project scaffold and build system
-- [ ] 1.1 RED: t/00-load.t — Proto3 loads; VERSION defined/non-empty
-- [ ] 1.2 GREEN: lib/Proto3.pm (ABOUTME + VERSION + POD stub)
-- [ ] 1.3 dist.ini ([@Starter::Git], 5.38, MIT, Proto3)
-- [ ] 1.4 cpanfile (runtime + test deps)
-- [ ] 1.5 Directory tree (lib/, t/ subdirs, share/proto/google/protobuf/) + .gitkeep
-- [ ] 1.6 justfile (check / test / lint)
-- [ ] 1.7 .gitignore (commit-msg.md + Perl artifacts)
-- [ ] 1.8 .github/workflows/ci.yml skeleton (matrix per §6)
-- [ ] 1.9 GREEN: t/00-load.t passes
-- [ ] 1.10 README.md stub
-- [ ] 1.11 Verify: `just check`
+- [x] 1.1 RED: t/00-load.t — Proto3 loads; VERSION defined/non-empty
+- [x] 1.2 GREEN: lib/Proto3.pm (ABOUTME + VERSION + POD stub)
+- [x] 1.3 dist.ini ([@Starter::Git], 5.38, MIT, Proto3)
+- [x] 1.4 cpanfile (runtime + test deps)
+- [x] 1.5 Directory tree (lib/, t/ subdirs, share/proto/google/protobuf/) + .gitkeep
+- [x] 1.6 justfile (check / test / lint)
+- [x] 1.7 .gitignore (commit-msg.md + Perl artifacts)
+- [x] 1.8 .github/workflows/ci.yml skeleton (matrix per §6)
+- [x] 1.9 GREEN: t/00-load.t passes
+- [x] 1.10 README.md stub
+- [x] 1.11 Verify: `just check`
 
 ### Step 2: Exception hierarchy
 - [ ] 2.1 RED: t/unit/exception.t (T-exc-1 message/throw)
