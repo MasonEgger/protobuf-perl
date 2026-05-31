@@ -82,15 +82,15 @@ work completes. Each step ends by running `just check`.
 - [x] 6.11 Verify: `just check`
 
 ### Step 7: Schema facade + index (Proto3::Schema)
-- [ ] 7.1 RED: add_file/files/file round-trip
-- [ ] 7.2 RED: message/enum lookup by fq name incl. nested
-- [ ] 7.3 RED: all_messages/all_enums flatten nested
-- [ ] 7.4 RED: duplicate full_name on add_file -> DuplicateMessage
-- [ ] 7.5 RED: unknown lookup -> undef
-- [ ] 7.6 GREEN: lib/Proto3/Schema.pm (facade + recursive fq index + resolve stub)
-- [ ] 7.7 REFACTOR: single recursive walker
-- [ ] 7.8 Document POD
-- [ ] 7.9 Verify: `just check`
+- [x] 7.1 RED: add_file/files/file round-trip
+- [x] 7.2 RED: message/enum lookup by fq name incl. nested
+- [x] 7.3 RED: all_messages/all_enums flatten nested
+- [x] 7.4 RED: duplicate full_name on add_file -> DuplicateMessage
+- [x] 7.5 RED: unknown lookup -> undef
+- [x] 7.6 GREEN: lib/Proto3/Schema.pm (facade + recursive fq index + resolve stub)
+- [x] 7.7 REFACTOR: single recursive walker
+- [x] 7.8 Document POD
+- [x] 7.9 Verify: `just check`
 
 ### Step 8: Type resolver (Proto3::Resolver)
 - [ ] 8.1 RED: fully-qualified .foo.bar.Baz resolves (T-res-1)
