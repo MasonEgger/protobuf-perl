@@ -55,14 +55,14 @@ work completes. Each step ends by running `just check`.
 - [x] 4.8 Verify: `just check`
 
 ### Step 5: Wire facade — fixed/float/fuzz (Proto3::Wire)
-- [ ] 5.1 RED: fixed32/fixed64 little-endian round-trip + vectors
-- [ ] 5.2 RED: float/double round-trip
-- [ ] 5.3 RED: NaN/+Inf/-Inf round-trip (T-wire-8)
-- [ ] 5.4 RED: t/wire/fuzz.t 10000 seeded inputs decode-or-typed-raise (T-wire-9)
-- [ ] 5.5 GREEN: lib/Proto3/Wire.pm (re-export + fixed/float/double)
-- [ ] 5.6 REFACTOR: centralize 32-bit fixed64 fallback
-- [ ] 5.7 Document POD (full public API + wire table)
-- [ ] 5.8 Verify: `just check`
+- [x] 5.1 RED: fixed32/fixed64 little-endian round-trip + vectors
+- [x] 5.2 RED: float/double round-trip
+- [x] 5.3 RED: NaN/+Inf/-Inf round-trip (T-wire-8)
+- [x] 5.4 RED: t/wire/fuzz.t 10000 seeded inputs decode-or-typed-raise (T-wire-9)
+- [x] 5.5 GREEN: lib/Proto3/Wire.pm (re-export + fixed/float/double)
+- [x] 5.6 REFACTOR: centralize 32-bit fixed64 fallback
+- [x] 5.7 Document POD (full public API + wire table)
+- [x] 5.8 Verify: `just check`
 
 ---
 
