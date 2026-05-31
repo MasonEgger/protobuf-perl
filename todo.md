@@ -21,15 +21,15 @@ work completes. Each step ends by running `just check`.
 - [x] 1.11 Verify: `just check`
 
 ### Step 2: Exception hierarchy
-- [ ] 2.1 RED: t/unit/exception.t (T-exc-1 message/throw)
-- [ ] 2.2 RED: stringification interpolation (T-exc-2)
-- [ ] 2.3 RED: isa hierarchy Wire::Truncated -> Wire -> Exception (T-exc-3)
-- [ ] 2.4 RED: cause default + round-trip; throw() dies
-- [ ] 2.5 GREEN: lib/Proto3/Exception.pm (base: message/cause/throw/overload)
-- [ ] 2.6 GREEN: all subclasses (Argument; Wire::*; Schema::*; Parser::*; Codec::*; JSON::*)
-- [ ] 2.7 REFACTOR: throw/overload inherited only
-- [ ] 2.8 Document POD (full hierarchy)
-- [ ] 2.9 Verify: `just check`
+- [x] 2.1 RED: t/unit/exception.t (T-exc-1 message/throw)
+- [x] 2.2 RED: stringification interpolation (T-exc-2)
+- [x] 2.3 RED: isa hierarchy Wire::Truncated -> Wire -> Exception (T-exc-3)
+- [x] 2.4 RED: cause default + round-trip; throw() dies
+- [x] 2.5 GREEN: lib/Proto3/Exception.pm (base: message/cause/throw/overload)
+- [x] 2.6 GREEN: all subclasses (Argument; Wire::*; Schema::*; Parser::*; Codec::*; JSON::*)
+- [x] 2.7 REFACTOR: throw/overload inherited only
+- [x] 2.8 Document POD (full hierarchy)
+- [x] 2.9 Verify: `just check`
 
 ### Step 3: Varint + zigzag (Proto3::Wire::Varint)
 - [ ] 3.1 RED: varint round-trip representative values (T-wire-1)
