@@ -40,6 +40,11 @@ class Proto3::Schema::Field {
     method oneof_index { $oneof_index }
     method type_ref    { $type_ref }
 
+    # The ONE post-construction mutation allowed on a Field (spec §4.2): the
+    # resolver calls this to link the resolved Schema::Message/Schema::Enum once
+    # type-name resolution runs. Every other field stays immutable.
+    method set_type_ref ($ref) { $type_ref = $ref; return $self; }
+
     method is_message  { $type eq 'message' }
     method is_enum     { $type eq 'enum' }
     method is_repeated { $label eq 'repeated' }

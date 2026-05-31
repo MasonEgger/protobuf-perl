@@ -105,16 +105,16 @@ work completes. Each step ends by running `just check`.
 - [x] 8.10 Verify: `just check`
 
 ### Step 9: Wire resolve into Schema (Schema->resolve)
-- [ ] 9.1 RED: message field type_ref undef before / set after resolve (T-schema-3)
-- [ ] 9.2 RED: enum field type_ref set
-- [ ] 9.3 RED: resolve idempotent (identity preserved)
-- [ ] 9.4 RED: dangling type_name -> UnresolvedType (T-schema-4)
-- [ ] 9.5 RED: respects owning message scope
-- [ ] 9.6 GREEN: Schema::resolve (Resolver iteration + idempotency flag)
-- [ ] 9.7 GREEN: narrow type_ref setter on Field (only mutable field)
-- [ ] 9.8 REFACTOR: keep Field otherwise immutable
-- [ ] 9.9 Document POD (idempotency)
-- [ ] 9.10 Verify: `just check`
+- [x] 9.1 RED: message field type_ref undef before / set after resolve (T-schema-3)
+- [x] 9.2 RED: enum field type_ref set
+- [x] 9.3 RED: resolve idempotent (identity preserved)
+- [x] 9.4 RED: dangling type_name -> UnresolvedType (T-schema-4)
+- [x] 9.5 RED: respects owning message scope
+- [x] 9.6 GREEN: Schema::resolve (Resolver iteration + idempotency flag)
+- [x] 9.7 GREEN: narrow type_ref setter on Field (only mutable field)
+- [x] 9.8 REFACTOR: keep Field otherwise immutable
+- [x] 9.9 Document POD (idempotency)
+- [x] 9.10 Verify: `just check`
 
 ---
 

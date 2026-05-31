@@ -5,6 +5,7 @@ use feature 'class';
 no warnings 'experimental::class';
 
 use Proto3::Exception;
+use Proto3::Resolver;
 
 class Proto3::Schema {
 
@@ -72,11 +73,48 @@ class Proto3::Schema {
     method all_messages { [ values %$message_index ] }
     method all_enums    { [ values %$enum_index ] }
 
-    # Type resolution is wired in Step 9; the stub is chainable so callers can
-    # write `$schema->resolve` today without behavior changing later.
+    # Link every message/enum-typed field to its resolved Schema::Message or
+    # Schema::Enum via the Step 8 resolver, following proto3 scoping. Each field
+    # resolves in its owning message's scope: current_package is the declaring
+    # file's package, current_message is the owning message's full_name.
+    #
+    # Idempotent (spec §4.2): the first call sets every $type_ref; a second call
+    # is a no-op, preserving object identity. A dangling type_name propagates
+    # Proto3::Exception::Schema::UnresolvedType from the resolver.
     method resolve {
+        return $self if $resolved;
+
+        my $resolver = Proto3::Resolver->new( schema => $self );
+
+        for my $file (@$files) {
+            my $package = $file->package;
+            $self->_resolve_message( $_, $package, $resolver )
+                for @{ $file->messages };
+        }
+
         $resolved = 1;
         return $self;
+    }
+
+    # Resolve every message/enum-typed field of one message, then recurse into
+    # nested messages. current_message is the message's own fully-qualified name.
+    method _resolve_message ($message, $package, $resolver) {
+        my $current_message = $message->full_name;
+
+        for my $field ( @{ $message->fields } ) {
+            next unless $field->is_message || $field->is_enum;
+
+            my $ref = $resolver->resolve(
+                type_name       => $field->type_name,
+                current_package => $package,
+                current_message => $current_message,
+            );
+            $field->set_type_ref($ref);
+        }
+
+        $self->_resolve_message( $_, $package, $resolver )
+            for @{ $message->nested_messages };
+        return;
     }
 }
 
@@ -150,8 +188,18 @@ into the same list as top-level ones.
 
 =item resolve
 
-Resolve field type references against the index. Currently a chainable stub;
-the resolution logic is wired in Step 9. Returns the schema.
+Link every message- or enum-typed field to its resolved
+L<Proto3::Schema::Message> or L<Proto3::Schema::Enum>. Each field is resolved in
+its owning message's scope (the declaring file's package plus the owning
+message's fully-qualified name) using L<Proto3::Resolver>, so proto3
+innermost-first type-name scoping is honored.
+
+B<Idempotent> (spec §4.2): the first call populates every C<type_ref>; a second
+call is a no-op and preserves object identity. A field whose C<type_name> cannot
+be resolved makes C<resolve> propagate
+L<Proto3::Exception::Schema::UnresolvedType>. C<type_ref> is the single mutable
+field on L<Proto3::Schema::Field>; it is written only here, via that class's
+narrow C<set_type_ref> setter. Returns the schema for chaining.
 
 =back
 

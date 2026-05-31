@@ -2,6 +2,7 @@
 
 ## Recent
 <!-- 10 most recent lessons, newest first -->
+- `Schema->resolve` must walk `$schema->files` (recursing into each message's nested_messages), NOT the flat `all_messages` index, because a field's resolution scope needs its declaring file's `package` as current_package and its owning message's `full_name` as current_message — the flat index has no back-pointer to the owning file/package (2026-05-31)
 - A committed module that throws a typed exception class must commit that class too. Step 5 committed `Proto3::Wire` calling `Proto3::Exception::Wire::InvalidWireType->throw` but left the `:isa` declaration uncommitted in the working tree, so a fresh checkout was red (`->throw` on a non-existent package fails with "Can't locate object method"). Run the suite from the committed tree, not the dirty working copy, before declaring a step green (2026-05-31)
 - This Perl 5.38.2 build supports the `:param` field attribute but NOT `:reader` (rejected as "Unrecognized field attribute") — write explicit `method foo { $foo }` readers instead of relying on the plan's `field $x :param :reader` (2026-05-30)
 - Enable the `class` feature on this box with `use feature 'class'; no warnings 'experimental::class';` — `use v5.38` alone does not enable the field attributes, and the `experimental` pragma module is not installed (2026-05-30)
