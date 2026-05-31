@@ -37,6 +37,7 @@ class Proto3::Exception::Wire :isa(Proto3::Exception) {}
 class Proto3::Exception::Wire::Truncated       :isa(Proto3::Exception::Wire) {}
 class Proto3::Exception::Wire::VarintTooLong   :isa(Proto3::Exception::Wire) {}
 class Proto3::Exception::Wire::DeprecatedGroup :isa(Proto3::Exception::Wire) {}
+class Proto3::Exception::Wire::InvalidWireType :isa(Proto3::Exception::Wire) {}
 
 # --- Schema ---------------------------------------------------------------
 class Proto3::Exception::Schema :isa(Proto3::Exception) {}

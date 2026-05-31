@@ -1,0 +1,61 @@
+# ABOUTME: Schema::Enum — an enum type and its values; §4.2.
+# Construction rejects duplicate value numbers unless allow_alias is set.
+use v5.38;
+use feature 'class';
+no warnings 'experimental::class';
+
+use Proto3::Schema::Util;
+use Proto3::Exception;
+
+class Proto3::Schema::Enum {
+    field $name        :param;
+    field $full_name   :param;
+    field $values      :param = [];     # arrayref of { name, number }
+    field $allow_alias :param = 0;
+    field $options     :param = {};
+
+    # Explicit readers (this Perl build has :param but not :reader).
+    method name        { $name }
+    method full_name   { $full_name }
+    method values      { $values }
+    method allow_alias { $allow_alias }
+    method options     { $options }
+
+    # Construction invariant: without allow_alias, value numbers must be unique.
+    ADJUST {
+        unless ( $allow_alias ) {
+            my @numbers = map { $_->{number} } @$values;
+            Proto3::Schema::Util::assert_unique(
+                \@numbers,
+                'Proto3::Exception::Schema',
+                "enum $full_name has duplicate value number %s (allow_alias not set)",
+            );
+        }
+    }
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+Proto3::Schema::Enum - An enum type within a schema
+
+=head1 DESCRIPTION
+
+Models a proto3 enum: its short and fully-qualified names plus its values
+(C<{ name, number }> hashrefs).
+
+=head1 CONSTRUCTION INVARIANTS
+
+When C<allow_alias> is false (the default), two values may not share the same
+number; construction raises C<Proto3::Exception::Schema> if they do. Setting
+C<allow_alias> to a true value permits aliasing, matching proto3's
+C<option allow_alias = true;>.
+
+=head1 LICENSE
+
+This software is licensed under the MIT license. See the C<LICENSE> file.
+
+=cut

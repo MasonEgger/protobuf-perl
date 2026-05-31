@@ -69,17 +69,17 @@ work completes. Each step ends by running `just check`.
 ## Phase 1 — Schema model + Resolver
 
 ### Step 6: Schema element classes (Proto3::Schema::*)
-- [ ] 6.1 RED: Message with 2 fields, readers correct (T-schema-1)
-- [ ] 6.2 RED: duplicate field number -> DuplicateField (T-schema-2)
-- [ ] 6.3 RED: duplicate field name -> DuplicateField
-- [ ] 6.4 RED: Field predicates is_message/is_enum/is_repeated/is_map
-- [ ] 6.5 RED: is_packed only for packable repeated scalar
-- [ ] 6.6 RED: Enum allow_alias validation
-- [ ] 6.7 GREEN: Schema/Field.pm (+ predicates + _is_packable_scalar)
-- [ ] 6.8 GREEN: Schema/Oneof.pm, Enum.pm, Message.pm, Service.pm, File.pm
-- [ ] 6.9 REFACTOR: shared duplicate-detection helper
-- [ ] 6.10 Document POD per class
-- [ ] 6.11 Verify: `just check`
+- [x] 6.1 RED: Message with 2 fields, readers correct (T-schema-1)
+- [x] 6.2 RED: duplicate field number -> DuplicateField (T-schema-2)
+- [x] 6.3 RED: duplicate field name -> DuplicateField
+- [x] 6.4 RED: Field predicates is_message/is_enum/is_repeated/is_map
+- [x] 6.5 RED: is_packed only for packable repeated scalar
+- [x] 6.6 RED: Enum allow_alias validation
+- [x] 6.7 GREEN: Schema/Field.pm (+ predicates + _is_packable_scalar)
+- [x] 6.8 GREEN: Schema/Oneof.pm, Enum.pm, Message.pm, Service.pm, File.pm
+- [x] 6.9 REFACTOR: shared duplicate-detection helper
+- [x] 6.10 Document POD per class
+- [x] 6.11 Verify: `just check`
 
 ### Step 7: Schema facade + index (Proto3::Schema)
 - [ ] 7.1 RED: add_file/files/file round-trip
