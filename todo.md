@@ -45,14 +45,14 @@ work completes. Each step ends by running `just check`.
 - [x] 3.11 Verify: `just check`
 
 ### Step 4: Tag packing (Proto3::Wire::Tag)
-- [ ] 4.1 RED: encode_tag vectors 0x08 / 0x12 (T-wire-3)
-- [ ] 4.2 RED: decode_tag returns (field, wire, rest); round-trip incl. max field
-- [ ] 4.3 RED: wire types 3/4 -> DeprecatedGroup (T-wire-6)
-- [ ] 4.4 RED: field number 0 -> Argument
-- [ ] 4.5 GREEN: lib/Proto3/Wire/Tag.pm (encode/decode + WIRE_* constants)
-- [ ] 4.6 REFACTOR: reuse Varint
-- [ ] 4.7 Document POD (wire-type table)
-- [ ] 4.8 Verify: `just check`
+- [x] 4.1 RED: encode_tag vectors 0x08 / 0x12 (T-wire-3)
+- [x] 4.2 RED: decode_tag returns (field, wire, rest); round-trip incl. max field
+- [x] 4.3 RED: wire types 3/4 -> DeprecatedGroup (T-wire-6)
+- [x] 4.4 RED: field number 0 -> Argument
+- [x] 4.5 GREEN: lib/Proto3/Wire/Tag.pm (encode/decode + WIRE_* constants)
+- [x] 4.6 REFACTOR: reuse Varint
+- [x] 4.7 Document POD (wire-type table)
+- [x] 4.8 Verify: `just check`
 
 ### Step 5: Wire facade — fixed/float/fuzz (Proto3::Wire)
 - [ ] 5.1 RED: fixed32/fixed64 little-endian round-trip + vectors
