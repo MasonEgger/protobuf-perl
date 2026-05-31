@@ -32,17 +32,17 @@ work completes. Each step ends by running `just check`.
 - [x] 2.9 Verify: `just check`
 
 ### Step 3: Varint + zigzag (Proto3::Wire::Varint)
-- [ ] 3.1 RED: varint round-trip representative values (T-wire-1)
-- [ ] 3.2 RED: decode returns (value, rest); known vector varint(300)
-- [ ] 3.3 RED: zigzag round-trip signed values (T-wire-2)
-- [ ] 3.4 RED: truncated -> Wire::Truncated (T-wire-4); 11-byte -> VarintTooLong (T-wire-5)
-- [ ] 3.5 RED: negative -> Argument
-- [ ] 3.6 GREEN: lib/Proto3/Wire/Varint.pm (exports + bigint fallback)
-- [ ] 3.7 RED: forced-bigint path matches native (T-wire-7)
-- [ ] 3.8 GREEN: bigint code path
-- [ ] 3.9 REFACTOR: shared group emit/consume helpers
-- [ ] 3.10 Document POD (formulas + limits)
-- [ ] 3.11 Verify: `just check`
+- [x] 3.1 RED: varint round-trip representative values (T-wire-1)
+- [x] 3.2 RED: decode returns (value, rest); known vector varint(300)
+- [x] 3.3 RED: zigzag round-trip signed values (T-wire-2)
+- [x] 3.4 RED: truncated -> Wire::Truncated (T-wire-4); 11-byte -> VarintTooLong (T-wire-5)
+- [x] 3.5 RED: negative -> Argument
+- [x] 3.6 GREEN: lib/Proto3/Wire/Varint.pm (exports + bigint fallback)
+- [x] 3.7 RED: forced-bigint path matches native (T-wire-7)
+- [x] 3.8 GREEN: bigint code path
+- [x] 3.9 REFACTOR: shared group emit/consume helpers
+- [x] 3.10 Document POD (formulas + limits)
+- [x] 3.11 Verify: `just check`
 
 ### Step 4: Tag packing (Proto3::Wire::Tag)
 - [ ] 4.1 RED: encode_tag vectors 0x08 / 0x12 (T-wire-3)
