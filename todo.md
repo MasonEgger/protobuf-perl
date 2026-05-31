@@ -93,16 +93,16 @@ work completes. Each step ends by running `just check`.
 - [x] 7.9 Verify: `just check`
 
 ### Step 8: Type resolver (Proto3::Resolver)
-- [ ] 8.1 RED: fully-qualified .foo.bar.Baz resolves (T-res-1)
-- [ ] 8.2 RED: relative resolves to inner coresdk.common.X (T-res-2)
-- [ ] 8.3 RED: relative resolves to root when only root defined (T-res-3)
-- [ ] 8.4 RED: innermost wins when both defined (T-res-4)
-- [ ] 8.5 RED: nested-message search order (T-res-5)
-- [ ] 8.6 RED: unresolvable -> UnresolvedType with ordered search_path (T-res-6)
-- [ ] 8.7 GREEN: lib/Proto3/Resolver.pm (index + scoping resolve)
-- [ ] 8.8 REFACTOR: pure candidate-list helper (assertable search_path)
-- [ ] 8.9 Document POD (scoping rules)
-- [ ] 8.10 Verify: `just check`
+- [x] 8.1 RED: fully-qualified .foo.bar.Baz resolves (T-res-1)
+- [x] 8.2 RED: relative resolves to inner coresdk.common.X (T-res-2)
+- [x] 8.3 RED: relative resolves to root when only root defined (T-res-3)
+- [x] 8.4 RED: innermost wins when both defined (T-res-4)
+- [x] 8.5 RED: nested-message search order (T-res-5)
+- [x] 8.6 RED: unresolvable -> UnresolvedType with ordered search_path (T-res-6)
+- [x] 8.7 GREEN: lib/Proto3/Resolver.pm (index + scoping resolve)
+- [x] 8.8 REFACTOR: pure candidate-list helper (assertable search_path)
+- [x] 8.9 Document POD (scoping rules)
+- [x] 8.10 Verify: `just check`
 
 ### Step 9: Wire resolve into Schema (Schema->resolve)
 - [ ] 9.1 RED: message field type_ref undef before / set after resolve (T-schema-3)

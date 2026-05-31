@@ -43,7 +43,19 @@ class Proto3::Exception::Wire::InvalidWireType :isa(Proto3::Exception::Wire) {}
 class Proto3::Exception::Schema :isa(Proto3::Exception) {}
 class Proto3::Exception::Schema::DuplicateField   :isa(Proto3::Exception::Schema) {}
 class Proto3::Exception::Schema::DuplicateMessage :isa(Proto3::Exception::Schema) {}
-class Proto3::Exception::Schema::UnresolvedType   :isa(Proto3::Exception::Schema) {}
+
+# UnresolvedType additionally carries the dangling reference (name), the
+# package the reference was written in (current_package), and the ordered
+# search_path of fully-qualified names the resolver attempted, for debugging.
+class Proto3::Exception::Schema::UnresolvedType :isa(Proto3::Exception::Schema) {
+    field $name            :param = undef;
+    field $current_package :param = undef;
+    field $search_path     :param = [];
+
+    method name            { $name }
+    method current_package { $current_package }
+    method search_path     { $search_path }
+}
 
 # --- Parser ---------------------------------------------------------------
 class Proto3::Exception::Parser :isa(Proto3::Exception) {}
@@ -154,6 +166,7 @@ code, only an C<:isa> relationship.
     |  |- Proto3::Exception::Schema::DuplicateField     field number/name reused
     |  |- Proto3::Exception::Schema::DuplicateMessage   FQ message name reused
     |  '- Proto3::Exception::Schema::UnresolvedType     type name never resolved
+    |       (extra fields: name, current_package, search_path)
     |- Proto3::Exception::Parser               .proto syntax / semantic error
     |  |- Proto3::Exception::Parser::ImportNotFound     import path missing
     |  |- Proto3::Exception::Parser::ImportCycle        circular import
