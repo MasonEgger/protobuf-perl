@@ -133,17 +133,17 @@ work completes. Each step ends by running `just check`.
 - [x] 10.10 Verify: `just check`
 
 ### Step 11: Codec decode — singular scalars + unknown skip
-- [ ] 11.1 RED: decode \x08\x2a -> {f=>42}
-- [ ] 11.2 RED: round-trip each scalar type
-- [ ] 11.3 RED: omitted -> proto3 default
-- [ ] 11.4 RED: unknown tag skipped by wire type, absent from result (T-codec-8a)
-- [ ] 11.5 RED: duplicate singular -> last wins (T-codec-9)
-- [ ] 11.6 RED: group wire type 3 -> raises (T-codec-10)
-- [ ] 11.7 RED: truncated -> Wire::Truncated propagates
-- [ ] 11.8 GREEN: Codec::decode (tag loop + skip + defaults)
-- [ ] 11.9 REFACTOR: share scalar table with encode
-- [ ] 11.10 Document POD (decode + unknown handling)
-- [ ] 11.11 Verify: `just check`
+- [x] 11.1 RED: decode \x08\x2a -> {f=>42}
+- [x] 11.2 RED: round-trip each scalar type
+- [x] 11.3 RED: omitted -> proto3 default
+- [x] 11.4 RED: unknown tag skipped by wire type, absent from result (T-codec-8a)
+- [x] 11.5 RED: duplicate singular -> last wins (T-codec-9)
+- [x] 11.6 RED: group wire type 3 -> raises (T-codec-10)
+- [x] 11.7 RED: truncated -> Wire::Truncated propagates
+- [x] 11.8 GREEN: Codec::decode (tag loop + skip + defaults)
+- [x] 11.9 REFACTOR: share scalar table with encode
+- [x] 11.10 Document POD (decode + unknown handling)
+- [x] 11.11 Verify: `just check`
 
 ### Step 12: Codec — repeated (packed + unpacked)
 - [ ] 12.1 RED: repeated int32 [1,2,3] -> packed 5 bytes (T-codec-5)

@@ -1,5 +1,5 @@
 # ABOUTME: Proto3::Codec — high-level encode/decode over a resolved Schema; §4.5.
-# This step: encode singular scalar fields (default-omit + optional presence).
+# This step: encode + decode singular scalar fields with unknown-field skipping.
 use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
@@ -18,9 +18,13 @@ use Proto3::Wire::Tag ();
 # Each entry is a hashref:
 #   wire    : the wire type constant (varint/i32/i64/len)
 #   encode  : ($value) -> the field PAYLOAD bytes (no tag)
+#   decode  : ($bytes) -> ($value, $rest); reads one field payload off the front
+#             of $bytes (the tag is already consumed) and returns the value plus
+#             the unconsumed remainder.
 #   is_num  : true if the value must look like a number (TypeMismatch otherwise)
 #   default : the proto3 implicit-presence default; a singular (non-optional)
-#             field whose value equals this is omitted from the wire.
+#             field whose value equals this is omitted from the wire, and an
+#             omitted implicit-presence field decodes back to it.
 my %SCALAR_TYPE = do {
     my $W_VARINT = Proto3::Wire::Tag::WIRE_VARINT();
     my $W_I64    = Proto3::Wire::Tag::WIRE_I64();
@@ -41,23 +45,48 @@ my %SCALAR_TYPE = do {
         return Proto3::Wire::encode_varint( length $bytes ) . $bytes;
     };
 
+    # --- decoders (mirror the encoders; the table is the single dispatch) ---
+    my $d_varint   = sub ($b) { Proto3::Wire::decode_varint($b) };
+    my $d_zigzag32 = sub ($b) { Proto3::Wire::decode_zigzag32($b) };
+    my $d_zigzag64 = sub ($b) { Proto3::Wire::decode_zigzag64($b) };
+    # bool normalizes any non-zero varint to 1 and zero to 0.
+    my $d_bool     = sub ($b) {
+        my ( $v, $rest ) = Proto3::Wire::decode_varint($b);
+        return ( ( $v ? 1 : 0 ), $rest );
+    };
+    my $d_fixed32  = sub ($b) { Proto3::Wire::decode_fixed32($b) };
+    my $d_fixed64  = sub ($b) { Proto3::Wire::decode_fixed64($b) };
+    my $d_float    = sub ($b) { Proto3::Wire::decode_float($b) };
+    my $d_double   = sub ($b) { Proto3::Wire::decode_double($b) };
+    # Length-delimited: a varint byte-count prefix, then that many raw bytes.
+    my $d_len      = sub ($b) {
+        my ( $n, $rest ) = Proto3::Wire::decode_varint($b);
+        $n = $n->numify if ref $n;
+        if ( length($rest) < $n ) {
+            Proto3::Exception::Wire::Truncated->throw(
+                message => "expected $n bytes, got " . length($rest),
+            );
+        }
+        return ( substr( $rest, 0, $n ), substr( $rest, $n ) );
+    };
+
     (
-        int32    => { wire => $W_VARINT, encode => $varint,   is_num => 1, default => 0 },
-        int64    => { wire => $W_VARINT, encode => $varint,   is_num => 1, default => 0 },
-        uint32   => { wire => $W_VARINT, encode => $varint,   is_num => 1, default => 0 },
-        uint64   => { wire => $W_VARINT, encode => $varint,   is_num => 1, default => 0 },
-        bool     => { wire => $W_VARINT, encode => $bool,     is_num => 1, default => 0 },
-        enum     => { wire => $W_VARINT, encode => $varint,   is_num => 1, default => 0 },
-        sint32   => { wire => $W_VARINT, encode => $zigzag32, is_num => 1, default => 0 },
-        sint64   => { wire => $W_VARINT, encode => $zigzag64, is_num => 1, default => 0 },
-        fixed32  => { wire => $W_I32,    encode => $fixed32,  is_num => 1, default => 0 },
-        sfixed32 => { wire => $W_I32,    encode => $fixed32,  is_num => 1, default => 0 },
-        float    => { wire => $W_I32,    encode => $float,    is_num => 1, default => 0 },
-        fixed64  => { wire => $W_I64,    encode => $fixed64,  is_num => 1, default => 0 },
-        sfixed64 => { wire => $W_I64,    encode => $fixed64,  is_num => 1, default => 0 },
-        double   => { wire => $W_I64,    encode => $double,   is_num => 1, default => 0 },
-        string   => { wire => $W_LEN,    encode => $len,      is_num => 0, default => '' },
-        bytes    => { wire => $W_LEN,    encode => $len,      is_num => 0, default => '' },
+        int32    => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        int64    => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        uint32   => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        uint64   => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        bool     => { wire => $W_VARINT, encode => $bool,     decode => $d_bool,     is_num => 1, default => 0 },
+        enum     => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        sint32   => { wire => $W_VARINT, encode => $zigzag32, decode => $d_zigzag32, is_num => 1, default => 0 },
+        sint64   => { wire => $W_VARINT, encode => $zigzag64, decode => $d_zigzag64, is_num => 1, default => 0 },
+        fixed32  => { wire => $W_I32,    encode => $fixed32,  decode => $d_fixed32,  is_num => 1, default => 0 },
+        sfixed32 => { wire => $W_I32,    encode => $fixed32,  decode => $d_fixed32,  is_num => 1, default => 0 },
+        float    => { wire => $W_I32,    encode => $float,    decode => $d_float,    is_num => 1, default => 0 },
+        fixed64  => { wire => $W_I64,    encode => $fixed64,  decode => $d_fixed64,  is_num => 1, default => 0 },
+        sfixed64 => { wire => $W_I64,    encode => $fixed64,  decode => $d_fixed64,  is_num => 1, default => 0 },
+        double   => { wire => $W_I64,    encode => $double,   decode => $d_double,   is_num => 1, default => 0 },
+        string   => { wire => $W_LEN,    encode => $len,      decode => $d_len,      is_num => 0, default => '' },
+        bytes    => { wire => $W_LEN,    encode => $len,      decode => $d_len,      is_num => 0, default => '' },
     );
 };
 
@@ -163,6 +192,69 @@ class Proto3::Codec {
             ),
         );
     }
+
+    # decode($full_name, $bytes) -> hashref of field name => value.
+    #
+    # Looks up the message by fully-qualified name (UnknownType if absent), then
+    # walks the wire byte-by-record: read each tag, and if the field number is
+    # known decode its singular scalar value (last value wins on a duplicate
+    # tag); unknown field numbers are skipped by their wire type and left out of
+    # the result. After the loop, implicit-presence singular scalar fields that
+    # never appeared are set to their proto3 default; explicit-presence
+    # (`optional`) fields that never appeared stay absent. Wire-level errors
+    # (DeprecatedGroup, Truncated) propagate from the wire layer.
+    method decode ($full_name, $bytes) {
+        my $message = $schema->message($full_name);
+        if ( !defined $message ) {
+            Proto3::Exception::Codec::UnknownType->throw(
+                message => "unknown message type: $full_name",
+            );
+        }
+
+        # Index the message's fields by number for O(1) tag dispatch.
+        my %field_by_number =
+            map { $_->number => $_ } @{ $message->fields };
+
+        my %result;
+        my $rest = $bytes;
+        while ( length $rest ) {
+            ( my $field_number, my $wire_type, $rest ) =
+                Proto3::Wire::Tag::decode_tag($rest);
+
+            my $field = $field_by_number{$field_number};
+            my $spec  = $field ? $SCALAR_TYPE{ $field->type } : undef;
+
+            # Unknown field number, or a known field this step does not yet
+            # handle (message/repeated): drain it by wire type and drop it.
+            if ( !$spec || $field->is_repeated || $field->is_message ) {
+                $rest = Proto3::Wire::skip_field( $wire_type, $rest );
+                next;
+            }
+
+            ( my $value, $rest ) = $spec->{decode}->($rest);
+            $result{ $field->name } = $value;    # last value wins
+        }
+
+        $self->_apply_defaults( $message, \%result );
+        return \%result;
+    }
+
+    # Fill in proto3 implicit-presence defaults for singular scalar fields that
+    # did not appear on the wire. Explicit-presence (`optional`) fields are left
+    # absent; repeated/message fields are out of scope this step.
+    method _apply_defaults ($message, $result) {
+        for my $field ( @{ $message->fields } ) {
+            next if exists $result->{ $field->name };
+            next if $field->label eq 'optional';
+            next if $field->is_repeated || $field->is_message;
+
+            my $spec = $SCALAR_TYPE{ $field->type };
+            next unless $spec;
+
+            $result->{ $field->name } = $spec->{default};
+        }
+        return;
+    }
 }
 
 1;
@@ -185,8 +277,8 @@ Proto3::Codec - high-level proto3 encode/decode over a resolved schema
 C<Proto3::Codec> encodes (and, in later steps, decodes) message values against a
 resolved L<Proto3::Schema>. Values are plain Perl hashrefs keyed by field name.
 
-This step implements C<encode> for B<singular scalar> fields. Repeated, map, and
-embedded-message fields are added by subsequent steps.
+This step implements C<encode> and C<decode> for B<singular scalar> fields.
+Repeated, map, and embedded-message fields are added by subsequent steps.
 
 =head1 METHODS
 
@@ -205,6 +297,15 @@ matters only once those are encoded.
 Encode the hashref C<\%values> as the message named C<$full_name> (a
 fully-qualified, dotted name). Fields are emitted in ascending field-number
 order.
+
+=head2 decode
+
+    my $values = $codec->decode( $full_name, $bytes );
+
+Decode wire C<$bytes> into a hashref keyed by field name, for the message named
+C<$full_name>. The wire is read record-by-record: each tag is dispatched on its
+field number, known singular scalar fields are decoded by type, and a duplicate
+tag for a singular field keeps the last value seen.
 
 =head1 ENCODING BEHAVIOR
 
@@ -230,6 +331,38 @@ single internal table (varint for the integer/bool/enum types, zigzag for
 C<sint32>/C<sint64>, fixed32/fixed64 for the fixed and floating forms, and
 length-delimited for C<string>/C<bytes>). That table is the shared source later
 codec, JSON, and code-generation steps build on.
+
+=back
+
+=head1 DECODING BEHAVIOR
+
+=over 4
+
+=item *
+
+B<Unknown fields.> A tag whose field number is not declared by the message (or
+whose field is not yet handled this step) is skipped according to its wire type
+(varint drained, length-delimited skips its byte count, I32/I64 skip their fixed
+width) and is B<absent> from the returned hashref.
+
+=item *
+
+B<Duplicate singular fields.> When a singular scalar field appears more than
+once, the last value on the wire wins.
+
+=item *
+
+B<Defaults for omitted fields.> A declared implicit-presence singular scalar
+field that never appears on the wire is set to its proto3 default (C<0> for
+numerics and bool, C<""> for string/bytes). An C<optional> (explicit-presence)
+field that never appears stays absent.
+
+=item *
+
+B<Wire errors propagate.> A deprecated group wire type (3/4) raises
+L<Proto3::Exception::Wire::DeprecatedGroup>, and truncated input raises
+L<Proto3::Exception::Wire::Truncated>, both surfaced unchanged from the wire
+layer.
 
 =back
 
