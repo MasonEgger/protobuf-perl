@@ -170,15 +170,15 @@ work completes. Each step ends by running `just check`.
 - [x] 13.10 Verify: `just check`
 
 ### Step 14: Codec — nested messages, enums, oneofs
-- [ ] 14.1 RED: embedded message round-trip (T-codec-7); unset omitted
-- [ ] 14.2 RED: enum as varint round-trip
-- [ ] 14.3 RED: unknown enum number preserved as int
-- [ ] 14.4 RED: oneof encode one member; decode last-wins clears sibling
-- [ ] 14.5 RED: 3-level nested round-trip
-- [ ] 14.6 GREEN: message/enum/oneof encode+decode
-- [ ] 14.7 REFACTOR: unify recursive embedded-message path with maps
-- [ ] 14.8 Document POD
-- [ ] 14.9 Verify: `just check`
+- [x] 14.1 RED: embedded message round-trip (T-codec-7); unset omitted
+- [x] 14.2 RED: enum as varint round-trip
+- [x] 14.3 RED: unknown enum number preserved as int
+- [x] 14.4 RED: oneof encode one member; decode last-wins clears sibling
+- [x] 14.5 RED: 3-level nested round-trip
+- [x] 14.6 GREEN: message/enum/oneof encode+decode
+- [x] 14.7 REFACTOR: unify recursive embedded-message path with maps
+- [x] 14.8 Document POD
+- [x] 14.9 Verify: `just check`
 
 ### Step 15: Codec — unknown-field preservation + protoc differential
 - [ ] 15.1 RED: preserve_unknown_fields stores raw + re-emits byte-exact (T-codec-8b)

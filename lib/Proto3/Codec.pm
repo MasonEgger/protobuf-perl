@@ -1,6 +1,6 @@
 # ABOUTME: Proto3::Codec — high-level encode/decode over a resolved Schema; §4.5.
-# This step: singular scalars, repeated fields (packed scalars + one-entry
-# messages), and maps as deterministic key-sorted repeated synthetic MapEntry.
+# Singular scalars, packed/unpacked repeated, key-sorted maps, recursive nested
+# messages, enums-as-varint, and oneof (encode one member, decode last-wins).
 use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
@@ -141,11 +141,11 @@ class Proto3::Codec {
     # encode($full_name, $hashref) -> wire bytes.
     #
     # Looks up the message by fully-qualified name (UnknownType if absent),
-    # then walks its fields in field-number order, emitting each singular scalar
-    # whose value is present and not the proto3 default. Fields declared
-    # `optional` use explicit-presence semantics: a set value is always emitted,
-    # even at the type default. Repeated/map/message fields are handled by later
-    # steps and are skipped here.
+    # then walks its fields in field-number order, emitting each present field:
+    # singular scalars/enums (default-omitted unless explicit-presence),
+    # repeated and map fields, and recursively-encoded singular messages. Fields
+    # declared `optional` and oneof members use explicit-presence semantics: a
+    # set value is always emitted, even at the type default.
     method encode ($full_name, $values) {
         my $message = $schema->message($full_name);
         if ( !defined $message ) {
@@ -177,9 +177,10 @@ class Proto3::Codec {
         return $self->_encode_repeated( $field, $value ) if $field->is_repeated;
 
         # Singular embedded message: length-delimited recursive encode via the
-        # shared embedded-message writer. A minimal path landed here so map
-        # message-valued entries work; Step 14 generalizes it (presence/omission
-        # rules). An empty-hashref message still emits a zero-length entry.
+        # single shared embedded-message writer (the same path used by map
+        # entries and repeated-message elements). An unset message field never
+        # reaches here (the exists/defined guards above omit it); a present but
+        # empty-hashref message still emits a zero-length LEN entry.
         return $self->_encode_embedded_message(
             $field->number, $self->_field_message_name($field), $value,
         ) if $field->is_message;
@@ -198,17 +199,28 @@ class Proto3::Codec {
         # dropped by the default-omit check below.
         $self->_assert_value_type( $field, $spec, $value );
 
-        my $is_optional = $field->label eq 'optional';
-
-        # proto3 implicit-presence default-omit: singular (non-optional) scalar
-        # at its default is not written. Optional fields are explicit-presence
-        # and are always written when set.
-        if ( !$is_optional && $self->_is_default_value( $spec, $value ) ) {
+        # A field with explicit presence is always written when set, even at the
+        # type default: that covers both `optional` fields and oneof members
+        # (presence in a oneof is "this member is the one set", independent of
+        # the value). Implicit-presence singular scalars at their default are
+        # omitted from the wire.
+        if ( !$self->_has_explicit_presence($field)
+            && $self->_is_default_value( $spec, $value ) )
+        {
             return '';
         }
 
         my $tag = Proto3::Wire::Tag::encode_tag( $field->number, $spec->{wire} );
         return $tag . $spec->{encode}->($value);
+    }
+
+    # True when a field uses explicit-presence serialization: it is declared
+    # `optional`, or it is a member of a oneof. Such a field is serialized
+    # whenever it is set, even when its value equals the type default.
+    method _has_explicit_presence ($field) {
+        return 1 if $field->label eq 'optional';
+        return 1 if defined $field->oneof_index;
+        return 0;
     }
 
     # Encode a repeated field. $elements is the field's arrayref value.
@@ -267,8 +279,8 @@ class Proto3::Codec {
     # Encode one embedded (length-delimited) message field: recursively encode
     # the value hashref as $message_name, then emit tag(field_number, LEN) + a
     # varint byte-count + the message bytes. The single embedded-message writer,
-    # shared by repeated-message elements and map entries (and generalized for
-    # singular message fields in Step 14).
+    # shared by singular message fields, repeated-message elements, and map
+    # entries — recursion through encode() handles arbitrarily deep nesting.
     method _encode_embedded_message ($field_number, $message_name, $value) {
         my $bytes = $self->encode( $message_name, $value );
         my $tag =
@@ -396,6 +408,14 @@ class Proto3::Codec {
         my %field_by_number =
             map { $_->number => $_ } @{ $message->fields };
 
+        # Index oneof members by oneof_index so a newly-decoded member can clear
+        # any earlier-set sibling (proto3 oneof last-wins).
+        my %oneof_members;
+        for my $f ( @{ $message->fields } ) {
+            next unless defined $f->oneof_index;
+            push @{ $oneof_members{ $f->oneof_index } }, $f->name;
+        }
+
         my %result;
         my $rest = $bytes;
         while ( length $rest ) {
@@ -422,21 +442,24 @@ class Proto3::Codec {
                 next;
             }
 
-            # Singular embedded message: decode recursively via the shared
-            # embedded-message reader (minimal path so map message values work;
-            # Step 14 generalizes it). Last occurrence wins.
+            # Singular embedded message: decode recursively via the single
+            # shared embedded-message reader (the same path that handles map
+            # entries and repeated-message elements). Last occurrence wins.
             if ( $field->is_message ) {
                 ( my $value, $rest ) = $self->_decode_embedded_message(
                     $self->_field_message_name($field), $rest,
                 );
                 $result{ $field->name } = $value;
+                $self->_clear_oneof_siblings( $field, \%result,
+                    \%oneof_members );
                 next;
             }
 
             my $spec = $SCALAR_TYPE{ $field->type };
 
-            # Known singular field with no scalar spec (e.g. enum handled later):
-            # drain it by wire type and drop it.
+            # Known singular field with no scalar spec: drain it by wire type and
+            # drop it. (All proto3 scalar/enum types have a spec; this guards
+            # only against an unexpected non-scalar singular type.)
             if ( !$spec ) {
                 $rest = Proto3::Wire::skip_field( $wire_type, $rest );
                 next;
@@ -444,6 +467,7 @@ class Proto3::Codec {
 
             ( my $value, $rest ) = $spec->{decode}->($rest);
             $result{ $field->name } = $value;    # last value wins
+            $self->_clear_oneof_siblings( $field, \%result, \%oneof_members );
         }
 
         $self->_apply_defaults( $message, \%result );
@@ -494,7 +518,8 @@ class Proto3::Codec {
     # Decode one embedded (length-delimited) message off the front of $bytes:
     # read its LEN block then recursively decode it as $message_name. Returns
     # ($value_hashref, $rest). The single embedded-message reader, shared by
-    # repeated-message elements and map entries (generalized in Step 14).
+    # singular message fields, repeated-message elements, and map entries —
+    # recursion through decode() handles arbitrarily deep nesting.
     method _decode_embedded_message ($message_name, $bytes) {
         my ( $block, $rest ) = $self->_read_packed_block($bytes);
         return ( $self->decode( $message_name, $block ), $rest );
@@ -568,10 +593,30 @@ class Proto3::Codec {
             next if $field->label eq 'optional';
             next if $field->is_message;
 
+            # A oneof member has explicit presence: if it was not on the wire it
+            # stays absent (filling it with a default would set every member of
+            # the oneof at once).
+            next if defined $field->oneof_index;
+
             my $spec = $SCALAR_TYPE{ $field->type };
             next unless $spec;
 
             $result->{ $field->name } = $spec->{default};
+        }
+        return;
+    }
+
+    # Enforce oneof last-wins after decoding member $field: delete any other
+    # member of the same oneof from $result, so only the most recently seen
+    # member of the group survives. $oneof_members maps oneof_index to the list
+    # of member field names. A no-op for fields not in any oneof.
+    method _clear_oneof_siblings ($field, $result, $oneof_members) {
+        my $index = $field->oneof_index;
+        return unless defined $index;
+
+        for my $sibling ( @{ $oneof_members->{$index} } ) {
+            next if $sibling eq $field->name;
+            delete $result->{$sibling};
         }
         return;
     }
@@ -597,9 +642,10 @@ Proto3::Codec - high-level proto3 encode/decode over a resolved schema
 C<Proto3::Codec> encodes (and, in later steps, decodes) message values against a
 resolved L<Proto3::Schema>. Values are plain Perl hashrefs keyed by field name.
 
-This step implements C<encode> and C<decode> for B<singular scalar>,
-B<repeated>, and B<map> fields. Singular embedded-message, enum, and oneof
-fields are added by a subsequent step.
+It implements C<encode> and C<decode> for B<singular scalar>, B<repeated>,
+B<map>, B<singular embedded-message>, B<enum>, and B<oneof> fields. Nested
+messages recurse through the same encode/decode entry points, so arbitrarily
+deep message trees round-trip.
 
 =head1 METHODS
 
@@ -677,6 +723,28 @@ are written B<sorted by key> (numeric key types numerically, string/bool keys
 as text) so the encoding is deterministic, even though proto3 leaves map order
 unspecified. An empty (or absent) map is omitted from the wire entirely.
 
+=item *
+
+B<Singular message fields.> A singular message field's value is a hashref,
+encoded recursively and wrapped as one length-delimited entry (wire type 2). A
+field that is absent (or C<undef>) is omitted entirely; a present but empty
+hashref still emits a zero-length entry. Nested messages recurse through the
+same writer, so arbitrarily deep trees encode.
+
+=item *
+
+B<Enum fields.> An enum is carried as the varint integer value (no symbol
+table is consulted). It follows the same implicit-presence default-omit rule as
+the other varint scalars: an enum at C<0> is omitted unless the field is
+C<optional> or a oneof member.
+
+=item *
+
+B<Oneof fields.> A oneof member is serialized with B<explicit presence>: when
+the value hashref sets it, it is always emitted, even at the type default. A
+well-formed value sets at most one member of a given oneof, and only that
+member appears on the wire.
+
 =back
 
 =head1 DECODING BEHAVIOR
@@ -712,6 +780,26 @@ one embedded MapEntry message; its C<key>/C<value> collapse into the hashref. A
 repeated key keeps the B<last> value seen (proto3 map last-wins). A
 message-typed value omitted on the wire decodes to an empty message hashref. A
 declared map that never appears decodes to an empty hashref.
+
+=item *
+
+B<Singular message fields.> An embedded message decodes recursively into a
+nested hashref keyed by the inner message's field names. A message field that
+never appears on the wire stays B<absent> from the result (messages have no
+default value). Last occurrence wins for a repeated tag.
+
+=item *
+
+B<Enum fields.> An enum decodes to its integer value. An B<unknown> enumerator
+number (one not defined by the enum) is B<preserved> as that integer rather
+than rejected.
+
+=item *
+
+B<Oneof fields (last-wins).> When several members of the same oneof appear on
+the wire, only the B<last-seen> member is kept; decoding it clears any
+earlier-set sibling from the result. A oneof member that never appears stays
+absent (it is not filled with a default).
 
 =item *
 
