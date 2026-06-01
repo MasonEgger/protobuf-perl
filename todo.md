@@ -121,16 +121,16 @@ work completes. Each step ends by running `just check`.
 ## Phase 2 — Codec (hashref)
 
 ### Step 10: Codec encode — singular scalars
-- [ ] 10.1 RED: empty message -> "" (T-codec-1)
-- [ ] 10.2 RED: int32=0 -> "" default-omit (T-codec-2)
-- [ ] 10.3 RED: int32=42 -> \x08\x2a (T-codec-3)
-- [ ] 10.4 RED: optional int32=0 -> 2 bytes (T-codec-4)
-- [ ] 10.5 RED: one field per scalar type, correct wire type; sint zigzag; bytes LEN
-- [ ] 10.6 RED: TypeMismatch on wrong-type value
-- [ ] 10.7 GREEN: lib/Proto3/Codec.pm (new + encode singular scalars + UnknownType)
-- [ ] 10.8 REFACTOR: scalar type->(wire,encoder) table
-- [ ] 10.9 Document POD (encode + default-omit)
-- [ ] 10.10 Verify: `just check`
+- [x] 10.1 RED: empty message -> "" (T-codec-1)
+- [x] 10.2 RED: int32=0 -> "" default-omit (T-codec-2)
+- [x] 10.3 RED: int32=42 -> \x08\x2a (T-codec-3)
+- [x] 10.4 RED: optional int32=0 -> 2 bytes (T-codec-4)
+- [x] 10.5 RED: one field per scalar type, correct wire type; sint zigzag; bytes LEN
+- [x] 10.6 RED: TypeMismatch on wrong-type value
+- [x] 10.7 GREEN: lib/Proto3/Codec.pm (new + encode singular scalars + UnknownType)
+- [x] 10.8 REFACTOR: scalar type->(wire,encoder) table
+- [x] 10.9 Document POD (encode + default-omit)
+- [x] 10.10 Verify: `just check`
 
 ### Step 11: Codec decode — singular scalars + unknown skip
 - [ ] 11.1 RED: decode \x08\x2a -> {f=>42}
