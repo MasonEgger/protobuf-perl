@@ -158,16 +158,16 @@ work completes. Each step ends by running `just check`.
 - [x] 12.10 Verify: `just check`
 
 ### Step 13: Codec — maps
-- [ ] 13.1 RED: map<string,int32> sorted-by-key exact bytes (T-codec-6)
-- [ ] 13.2 RED: round-trip map<string,int32> and map<int32,Message>
-- [ ] 13.3 RED: duplicate key -> last wins
-- [ ] 13.4 RED: disallowed key type -> Schema at construction
-- [ ] 13.5 RED: empty map omitted
-- [ ] 13.6 GREEN: map as repeated synthetic MapEntry encode/decode
-- [ ] 13.7 GREEN: map key-type validation at construction
-- [ ] 13.8 REFACTOR: reuse embedded-message path
-- [ ] 13.9 Document POD (map determinism + key constraints)
-- [ ] 13.10 Verify: `just check`
+- [x] 13.1 RED: map<string,int32> sorted-by-key exact bytes (T-codec-6)
+- [x] 13.2 RED: round-trip map<string,int32> and map<int32,Message>
+- [x] 13.3 RED: duplicate key -> last wins
+- [x] 13.4 RED: disallowed key type -> Schema at construction
+- [x] 13.5 RED: empty map omitted
+- [x] 13.6 GREEN: map as repeated synthetic MapEntry encode/decode
+- [x] 13.7 GREEN: map key-type validation at construction
+- [x] 13.8 REFACTOR: reuse embedded-message path
+- [x] 13.9 Document POD (map determinism + key constraints)
+- [x] 13.10 Verify: `just check`
 
 ### Step 14: Codec — nested messages, enums, oneofs
 - [ ] 14.1 RED: embedded message round-trip (T-codec-7); unset omitted

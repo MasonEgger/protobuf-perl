@@ -1,6 +1,6 @@
 # ABOUTME: Proto3::Codec — high-level encode/decode over a resolved Schema; §4.5.
-# This step: singular scalars, plus repeated fields (packed scalars + one-entry
-# messages) with lenient decode of both packed and unpacked scalar forms.
+# This step: singular scalars, repeated fields (packed scalars + one-entry
+# messages), and maps as deterministic key-sorted repeated synthetic MapEntry.
 use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
@@ -91,10 +91,52 @@ my %SCALAR_TYPE = do {
     );
 };
 
+# The proto3 scalar types permitted as a map key (spec §4.5): every integral
+# type, plus bool and string. Floating-point, bytes, enum, and message keys are
+# forbidden. Held as a pre-class lexical for the same package-scoping reason as
+# %SCALAR_TYPE above. Consulted once per map field at codec construction.
+my %ALLOWED_MAP_KEY_TYPE = map { $_ => 1 } qw(
+    int32 int64 uint32 uint64 sint32 sint64
+    fixed32 fixed64 sfixed32 sfixed64
+    bool string
+);
+
 class Proto3::Codec {
     field $schema :param;
 
     method schema { $schema }
+
+    # Validate every map field's key type at construction (spec §4.5): a map key
+    # must be an integral type, bool, or string. A disallowed key (float/double/
+    # bytes/enum/message) raises Proto3::Exception::Schema here, when the codec
+    # is built for a schema containing the offending map — not lazily at encode
+    # time. A map field is modeled as a repeated field whose element is a
+    # synthetic MapEntry message (is_map_entry) with key=field 1, value=field 2.
+    ADJUST {
+        for my $message ( @{ $schema->all_messages } ) {
+            next unless $message->is_map_entry;
+            $self->_assert_map_key_type($message);
+        }
+    }
+
+    # Raise Schema when the MapEntry's key field (field 1) is not a permitted
+    # map-key type. The MapEntry is the synthetic message a map field points to.
+    method _assert_map_key_type ($map_entry) {
+        my ($key_field) =
+            grep { $_->number == 1 } @{ $map_entry->fields };
+        return unless $key_field;    # malformed entry; nothing to validate
+
+        my $key_type = $key_field->type;
+        return if $ALLOWED_MAP_KEY_TYPE{$key_type};
+
+        Proto3::Exception::Schema->throw(
+            message => sprintf(
+                'map %s has disallowed key type %s '
+                    . '(map keys must be integral, bool, or string)',
+                $map_entry->full_name, $key_type,
+            ),
+        );
+    }
 
     # encode($full_name, $hashref) -> wire bytes.
     #
@@ -131,11 +173,16 @@ class Proto3::Codec {
         my $value = $values->{$name};
         return '' unless defined $value;
 
+        return $self->_encode_map( $field, $value )      if $field->is_map;
         return $self->_encode_repeated( $field, $value ) if $field->is_repeated;
 
-        # Singular embedded message: length-delimited recursive encode. Handled
-        # fully by a later step; not exercised here for singular, so skip.
-        return '' if $field->is_message;
+        # Singular embedded message: length-delimited recursive encode via the
+        # shared embedded-message writer. A minimal path landed here so map
+        # message-valued entries work; Step 14 generalizes it (presence/omission
+        # rules). An empty-hashref message still emits a zero-length entry.
+        return $self->_encode_embedded_message(
+            $field->number, $self->_field_message_name($field), $value,
+        ) if $field->is_message;
 
         return $self->_encode_singular_scalar( $field, $value );
     }
@@ -209,12 +256,67 @@ class Proto3::Codec {
             return $tag . $spec->{encode}->($element);
         }
 
-        # Embedded message element: encode recursively, then length-prefix it.
-        my $bytes = $self->encode( $self->_field_message_name($field), $element );
-        my $tag = Proto3::Wire::Tag::encode_tag(
-            $field->number, Proto3::Wire::Tag::WIRE_LEN(),
+        # Embedded message element: encode recursively, then tag + length-prefix.
+        return $self->_encode_embedded_message(
+            $field->number,
+            $self->_field_message_name($field),
+            $element,
         );
+    }
+
+    # Encode one embedded (length-delimited) message field: recursively encode
+    # the value hashref as $message_name, then emit tag(field_number, LEN) + a
+    # varint byte-count + the message bytes. The single embedded-message writer,
+    # shared by repeated-message elements and map entries (and generalized for
+    # singular message fields in Step 14).
+    method _encode_embedded_message ($field_number, $message_name, $value) {
+        my $bytes = $self->encode( $message_name, $value );
+        my $tag =
+            Proto3::Wire::Tag::encode_tag( $field_number,
+            Proto3::Wire::Tag::WIRE_LEN() );
         return $tag . Proto3::Wire::encode_varint( length $bytes ) . $bytes;
+    }
+
+    # Encode a map field. $entries is the field's hashref value ({ key => value
+    # }). A map is wire-equivalent to a repeated synthetic MapEntry message with
+    # key=field 1 and value=field 2: each pair becomes an embedded MapEntry under
+    # the map field's number. Entries are emitted sorted by key for deterministic
+    # output (proto3 leaves map order unspecified; we make it stable). An empty
+    # map is omitted entirely.
+    method _encode_map ($field, $entries) {
+        return '' unless %$entries;
+
+        my $entry_name = $self->_field_message_name($field);
+        my $key_type   = $self->_map_key_type($entry_name);
+
+        my $out = '';
+        for my $key ( $self->_sorted_map_keys( $key_type, [ keys %$entries ] ) )
+        {
+            $out .= $self->_encode_embedded_message(
+                $field->number,
+                $entry_name,
+                { key => $key, value => $entries->{$key} },
+            );
+        }
+        return $out;
+    }
+
+    # The proto3 type of a MapEntry's key field (field 1), used to choose a
+    # deterministic key sort and to drive validation. Returns undef if absent.
+    method _map_key_type ($entry_name) {
+        my $entry = $schema->message($entry_name) or return undef;
+        my ($key_field) = grep { $_->number == 1 } @{ $entry->fields };
+        return $key_field ? $key_field->type : undef;
+    }
+
+    # Order map keys deterministically: numeric key types sort numerically so
+    # 2 precedes 10; string (and bool, treated as text) keys sort as strings.
+    method _sorted_map_keys ($key_type, $keys) {
+        my $spec = $key_type ? $SCALAR_TYPE{$key_type} : undef;
+        if ( $spec && $spec->{is_num} && $key_type ne 'bool' ) {
+            return sort { $a <=> $b } @$keys;
+        }
+        return sort @$keys;
     }
 
     # The fully-qualified message name for a message-typed field. Prefers the
@@ -308,6 +410,11 @@ class Proto3::Codec {
                 next;
             }
 
+            if ( $field->is_map ) {
+                $rest = $self->_decode_map( $field, $rest, \%result );
+                next;
+            }
+
             if ( $field->is_repeated ) {
                 $rest = $self->_decode_repeated(
                     $field, $wire_type, $rest, \%result,
@@ -315,11 +422,22 @@ class Proto3::Codec {
                 next;
             }
 
+            # Singular embedded message: decode recursively via the shared
+            # embedded-message reader (minimal path so map message values work;
+            # Step 14 generalizes it). Last occurrence wins.
+            if ( $field->is_message ) {
+                ( my $value, $rest ) = $self->_decode_embedded_message(
+                    $self->_field_message_name($field), $rest,
+                );
+                $result{ $field->name } = $value;
+                next;
+            }
+
             my $spec = $SCALAR_TYPE{ $field->type };
 
-            # Known singular field this step does not yet handle (message):
+            # Known singular field with no scalar spec (e.g. enum handled later):
             # drain it by wire type and drop it.
-            if ( !$spec || $field->is_message ) {
+            if ( !$spec ) {
                 $rest = Proto3::Wire::skip_field( $wire_type, $rest );
                 next;
             }
@@ -359,9 +477,10 @@ class Proto3::Codec {
 
         # Embedded message element: read its LEN block and decode recursively.
         if ( !$spec || $field->is_message ) {
-            ( my $block, $rest ) = $self->_read_packed_block($rest);
-            push @$list,
-                $self->decode( $self->_field_message_name($field), $block );
+            ( my $value, $rest ) = $self->_decode_embedded_message(
+                $self->_field_message_name($field), $rest,
+            );
+            push @$list, $value;
             return $rest;
         }
 
@@ -369,6 +488,37 @@ class Proto3::Codec {
         # element under one tag.
         ( my $value, $rest ) = $spec->{decode}->($rest);
         push @$list, $value;
+        return $rest;
+    }
+
+    # Decode one embedded (length-delimited) message off the front of $bytes:
+    # read its LEN block then recursively decode it as $message_name. Returns
+    # ($value_hashref, $rest). The single embedded-message reader, shared by
+    # repeated-message elements and map entries (generalized in Step 14).
+    method _decode_embedded_message ($message_name, $bytes) {
+        my ( $block, $rest ) = $self->_read_packed_block($bytes);
+        return ( $self->decode( $message_name, $block ), $rest );
+    }
+
+    # Decode one wire occurrence of a map field: a single embedded MapEntry
+    # message under the map field's tag. The entry decodes to { key => ...,
+    # value => ... }; we collapse it into $result->{field-name}{key} = value.
+    # Duplicate keys keep the last occurrence (proto3 map last-wins). Returns the
+    # unconsumed bytes. An always-present (possibly empty) hashref is ensured so
+    # a declared map with no entries on the wire still decodes to {}.
+    method _decode_map ($field, $rest, $result) {
+        my $map = $result->{ $field->name } //= {};
+
+        ( my $entry, $rest ) = $self->_decode_embedded_message(
+            $self->_field_message_name($field), $rest,
+        );
+
+        # MapEntry omits a default-valued key/value on the wire. _apply_defaults
+        # restores a scalar key/value to its proto3 zero; a message-typed value
+        # left off the wire defaults to an empty message hashref here.
+        my $key   = $entry->{key};
+        my $value = exists $entry->{value} ? $entry->{value} : {};
+        $map->{$key} = $value;    # last value wins per key
         return $rest;
     }
 
@@ -404,6 +554,11 @@ class Proto3::Codec {
     method _apply_defaults ($message, $result) {
         for my $field ( @{ $message->fields } ) {
             next if exists $result->{ $field->name };
+
+            if ( $field->is_map ) {
+                $result->{ $field->name } = {};
+                next;
+            }
 
             if ( $field->is_repeated ) {
                 $result->{ $field->name } = [];
@@ -442,9 +597,9 @@ Proto3::Codec - high-level proto3 encode/decode over a resolved schema
 C<Proto3::Codec> encodes (and, in later steps, decodes) message values against a
 resolved L<Proto3::Schema>. Values are plain Perl hashrefs keyed by field name.
 
-This step implements C<encode> and C<decode> for B<singular scalar> and
-B<repeated> fields. Map and singular embedded-message fields are added by
-subsequent steps.
+This step implements C<encode> and C<decode> for B<singular scalar>,
+B<repeated>, and B<map> fields. Singular embedded-message, enum, and oneof
+fields are added by a subsequent step.
 
 =head1 METHODS
 
@@ -455,6 +610,12 @@ subsequent steps.
 Construct a codec bound to a L<Proto3::Schema>. The schema should already be
 resolved (see L<Proto3::Schema/resolve>) for message-typed fields, though that
 matters only once those are encoded.
+
+At construction every map field's B<key type> is validated: a map key must be
+an integral type, C<bool>, or C<string>. A schema containing a map with a
+C<float>, C<double>, C<bytes>, C<enum>, or message key makes C<new> raise
+L<Proto3::Exception::Schema> immediately, rather than failing later at encode
+time.
 
 =head2 encode
 
@@ -507,6 +668,15 @@ repeated C<string>, C<bytes>, or message field is emitted as one tag-prefixed
 entry per element, in list order. An empty (or absent) repeated field is omitted
 from the wire entirely.
 
+=item *
+
+B<Map fields.> A map field's value is a hashref. On the wire a map is
+B<repeated synthetic MapEntry>: each pair is an embedded message with C<key> at
+field 1 and C<value> at field 2, emitted under the map field's number. Entries
+are written B<sorted by key> (numeric key types numerically, string/bool keys
+as text) so the encoding is deterministic, even though proto3 leaves map order
+unspecified. An empty (or absent) map is omitted from the wire entirely.
+
 =back
 
 =head1 DECODING BEHAVIOR
@@ -537,6 +707,14 @@ appears decodes to the empty list.
 
 =item *
 
+B<Map fields (last-wins).> A map field decodes to a hashref. Each occurrence is
+one embedded MapEntry message; its C<key>/C<value> collapse into the hashref. A
+repeated key keeps the B<last> value seen (proto3 map last-wins). A
+message-typed value omitted on the wire decodes to an empty message hashref. A
+declared map that never appears decodes to an empty hashref.
+
+=item *
+
 B<Defaults for omitted fields.> A declared implicit-presence singular scalar
 field that never appears on the wire is set to its proto3 default (C<0> for
 numerics and bool, C<""> for string/bytes). An C<optional> (explicit-presence)
@@ -564,6 +742,11 @@ An unknown message type name raises L<Proto3::Exception::Codec::UnknownType>.
 A value whose type clashes with the field (e.g. a non-numeric string for an
 C<int32>) raises L<Proto3::Exception::Codec::TypeMismatch>, naming the field and
 its expected type.
+
+=item *
+
+A schema containing a map field with a disallowed key type raises
+L<Proto3::Exception::Schema> at codec construction (see L</new>).
 
 =back
 
