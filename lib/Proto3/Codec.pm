@@ -1,5 +1,6 @@
 # ABOUTME: Proto3::Codec — high-level encode/decode over a resolved Schema; §4.5.
-# This step: encode + decode singular scalar fields with unknown-field skipping.
+# This step: singular scalars, plus repeated fields (packed scalars + one-entry
+# messages) with lenient decode of both packed and unpacked scalar forms.
 use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
@@ -130,11 +131,19 @@ class Proto3::Codec {
         my $value = $values->{$name};
         return '' unless defined $value;
 
-        # Only singular scalars are in scope this step.
-        return '' if $field->is_repeated || $field->is_message;
+        return $self->_encode_repeated( $field, $value ) if $field->is_repeated;
 
-        my $type = $field->type;
-        my $spec = $SCALAR_TYPE{$type};
+        # Singular embedded message: length-delimited recursive encode. Handled
+        # fully by a later step; not exercised here for singular, so skip.
+        return '' if $field->is_message;
+
+        return $self->_encode_singular_scalar( $field, $value );
+    }
+
+    # Encode a singular scalar field's tag-prefixed bytes (or '' when the value
+    # is the implicit-presence default for a non-optional field).
+    method _encode_singular_scalar ($field, $value) {
+        my $spec = $SCALAR_TYPE{ $field->type };
         return '' unless $spec;    # message/group handled elsewhere
 
         # Validate the value's type first: a non-numeric value for a numeric
@@ -153,6 +162,76 @@ class Proto3::Codec {
 
         my $tag = Proto3::Wire::Tag::encode_tag( $field->number, $spec->{wire} );
         return $tag . $spec->{encode}->($value);
+    }
+
+    # Encode a repeated field. $elements is the field's arrayref value.
+    #
+    # An empty list is omitted entirely. Packable scalars (numeric/bool/enum)
+    # are emitted as a SINGLE length-delimited block of concatenated element
+    # payloads (proto3 packed-by-default). String/bytes/message elements are not
+    # packable: each is emitted as its own tag-prefixed entry, in list order.
+    method _encode_repeated ($field, $elements) {
+        return '' unless @$elements;
+
+        my $spec = $SCALAR_TYPE{ $field->type };
+
+        if ( $spec && $self->_is_packable( $field->type ) ) {
+            my $payload = '';
+            for my $element (@$elements) {
+                $self->_assert_value_type( $field, $spec, $element );
+                $payload .= $spec->{encode}->($element);
+            }
+            my $tag = Proto3::Wire::Tag::encode_tag(
+                $field->number,
+                Proto3::Wire::Tag::WIRE_LEN(),
+            );
+            return $tag
+                . Proto3::Wire::encode_varint( length $payload )
+                . $payload;
+        }
+
+        # Unpacked path: one tag-prefixed entry per element.
+        my $out = '';
+        for my $element (@$elements) {
+            $out .= $self->_encode_repeated_element( $field, $spec, $element );
+        }
+        return $out;
+    }
+
+    # Encode one element of a non-packed repeated field (string/bytes scalar, or
+    # an embedded message) as its own tag-prefixed entry.
+    method _encode_repeated_element ($field, $spec, $element) {
+        if ($spec) {    # length-delimited scalar (string/bytes)
+            $self->_assert_value_type( $field, $spec, $element );
+            my $tag = Proto3::Wire::Tag::encode_tag(
+                $field->number, $spec->{wire},
+            );
+            return $tag . $spec->{encode}->($element);
+        }
+
+        # Embedded message element: encode recursively, then length-prefix it.
+        my $bytes = $self->encode( $self->_field_message_name($field), $element );
+        my $tag = Proto3::Wire::Tag::encode_tag(
+            $field->number, Proto3::Wire::Tag::WIRE_LEN(),
+        );
+        return $tag . Proto3::Wire::encode_varint( length $bytes ) . $bytes;
+    }
+
+    # The fully-qualified message name for a message-typed field. Prefers the
+    # resolved $type_ref (set by Schema->resolve); falls back to the raw
+    # $type_name so directly-constructed schemas work without a resolve pass.
+    method _field_message_name ($field) {
+        my $ref = $field->type_ref;
+        return $ref->full_name if $ref;
+        return $field->type_name;
+    }
+
+    # True when a proto3 scalar type uses packed encoding for repeated fields:
+    # every numeric/bool/enum type is packable; string and bytes are not.
+    method _is_packable ($type) {
+        my $spec = $SCALAR_TYPE{$type};
+        return 0 unless $spec;
+        return $spec->{is_num} ? 1 : 0;
     }
 
     # True when $value is the proto3 implicit-presence default for the scalar
@@ -222,11 +301,25 @@ class Proto3::Codec {
                 Proto3::Wire::Tag::decode_tag($rest);
 
             my $field = $field_by_number{$field_number};
-            my $spec  = $field ? $SCALAR_TYPE{ $field->type } : undef;
 
-            # Unknown field number, or a known field this step does not yet
-            # handle (message/repeated): drain it by wire type and drop it.
-            if ( !$spec || $field->is_repeated || $field->is_message ) {
+            # Unknown field number: drain it by wire type and drop it.
+            if ( !$field ) {
+                $rest = Proto3::Wire::skip_field( $wire_type, $rest );
+                next;
+            }
+
+            if ( $field->is_repeated ) {
+                $rest = $self->_decode_repeated(
+                    $field, $wire_type, $rest, \%result,
+                );
+                next;
+            }
+
+            my $spec = $SCALAR_TYPE{ $field->type };
+
+            # Known singular field this step does not yet handle (message):
+            # drain it by wire type and drop it.
+            if ( !$spec || $field->is_message ) {
                 $rest = Proto3::Wire::skip_field( $wire_type, $rest );
                 next;
             }
@@ -239,14 +332,86 @@ class Proto3::Codec {
         return \%result;
     }
 
-    # Fill in proto3 implicit-presence defaults for singular scalar fields that
-    # did not appear on the wire. Explicit-presence (`optional`) fields are left
-    # absent; repeated/message fields are out of scope this step.
+    # Decode one wire occurrence of a repeated field, appending its element(s) to
+    # $result->{field-name} (an arrayref) in order. Returns the unconsumed bytes.
+    #
+    # Lenient by design: a packable scalar field accepts BOTH the packed LEN
+    # block (concatenated payloads under one tag) AND the unpacked form (one tag
+    # per element), and mixed occurrences for the same field concatenate in wire
+    # order. String/bytes/message elements arrive one tag-prefixed entry at a
+    # time.
+    method _decode_repeated ($field, $wire_type, $rest, $result) {
+        my $list = $result->{ $field->name } //= [];
+        my $spec = $SCALAR_TYPE{ $field->type };
+
+        # Packable scalar carried in a LEN block: read the whole block and
+        # decode each element from it. (Distinguished from the unpacked form by
+        # the wire type: a packed block is WIRE_LEN; an unpacked element uses the
+        # scalar's native wire type.)
+        if (   $spec
+            && $self->_is_packable( $field->type )
+            && $wire_type == Proto3::Wire::Tag::WIRE_LEN() )
+        {
+            ( my $block, $rest ) = $self->_read_packed_block($rest);
+            push @$list, $self->_decode_packed_elements( $spec, $block );
+            return $rest;
+        }
+
+        # Embedded message element: read its LEN block and decode recursively.
+        if ( !$spec || $field->is_message ) {
+            ( my $block, $rest ) = $self->_read_packed_block($rest);
+            push @$list,
+                $self->decode( $self->_field_message_name($field), $block );
+            return $rest;
+        }
+
+        # Unpacked scalar element (also the only path for string/bytes): one
+        # element under one tag.
+        ( my $value, $rest ) = $spec->{decode}->($rest);
+        push @$list, $value;
+        return $rest;
+    }
+
+    # Read a length-delimited block: a varint byte-count prefix followed by that
+    # many raw bytes. Returns ($block, $rest). Truncation raises Wire::Truncated.
+    method _read_packed_block ($bytes) {
+        my ( $n, $rest ) = Proto3::Wire::decode_varint($bytes);
+        $n = $n->numify if ref $n;
+        if ( length($rest) < $n ) {
+            Proto3::Exception::Wire::Truncated->throw(
+                message => "expected $n bytes, got " . length($rest),
+            );
+        }
+        return ( substr( $rest, 0, $n ), substr( $rest, $n ) );
+    }
+
+    # Decode every scalar element packed into $block using $spec's decoder.
+    # Returns the list of decoded values, in order.
+    method _decode_packed_elements ($spec, $block) {
+        my @values;
+        my $rest = $block;
+        while ( length $rest ) {
+            ( my $value, $rest ) = $spec->{decode}->($rest);
+            push @values, $value;
+        }
+        return @values;
+    }
+
+    # Fill in proto3 defaults for declared fields that did not appear on the
+    # wire. A repeated field defaults to the empty list. An implicit-presence
+    # singular scalar defaults to its proto3 zero value; explicit-presence
+    # (`optional`) fields and singular message fields are left absent.
     method _apply_defaults ($message, $result) {
         for my $field ( @{ $message->fields } ) {
             next if exists $result->{ $field->name };
+
+            if ( $field->is_repeated ) {
+                $result->{ $field->name } = [];
+                next;
+            }
+
             next if $field->label eq 'optional';
-            next if $field->is_repeated || $field->is_message;
+            next if $field->is_message;
 
             my $spec = $SCALAR_TYPE{ $field->type };
             next unless $spec;
@@ -277,8 +442,9 @@ Proto3::Codec - high-level proto3 encode/decode over a resolved schema
 C<Proto3::Codec> encodes (and, in later steps, decodes) message values against a
 resolved L<Proto3::Schema>. Values are plain Perl hashrefs keyed by field name.
 
-This step implements C<encode> and C<decode> for B<singular scalar> fields.
-Repeated, map, and embedded-message fields are added by subsequent steps.
+This step implements C<encode> and C<decode> for B<singular scalar> and
+B<repeated> fields. Map and singular embedded-message fields are added by
+subsequent steps.
 
 =head1 METHODS
 
@@ -332,6 +498,15 @@ C<sint32>/C<sint64>, fixed32/fixed64 for the fixed and floating forms, and
 length-delimited for C<string>/C<bytes>). That table is the shared source later
 codec, JSON, and code-generation steps build on.
 
+=item *
+
+B<Repeated fields.> A repeated field's value is an arrayref. A packable scalar
+(any numeric, C<bool>, or C<enum> type) is B<packed by default>: all element
+payloads are concatenated into one length-delimited block under a single tag. A
+repeated C<string>, C<bytes>, or message field is emitted as one tag-prefixed
+entry per element, in list order. An empty (or absent) repeated field is omitted
+from the wire entirely.
+
 =back
 
 =head1 DECODING BEHAVIOR
@@ -349,6 +524,16 @@ width) and is B<absent> from the returned hashref.
 
 B<Duplicate singular fields.> When a singular scalar field appears more than
 once, the last value on the wire wins.
+
+=item *
+
+B<Repeated fields (lenient).> A repeated field decodes to an arrayref, with each
+occurrence appended in wire order. Decoding a packable scalar repeated field
+accepts B<both> forms regardless of how the field was declared: a packed
+length-delimited block (its elements expanded in order) and the unpacked form
+(one tag-prefixed element at a time). Packed and unpacked occurrences of the same
+field concatenate in the order they appear. A declared repeated field that never
+appears decodes to the empty list.
 
 =item *
 

@@ -146,16 +146,16 @@ work completes. Each step ends by running `just check`.
 - [x] 11.11 Verify: `just check`
 
 ### Step 12: Codec — repeated (packed + unpacked)
-- [ ] 12.1 RED: repeated int32 [1,2,3] -> packed 5 bytes (T-codec-5)
-- [ ] 12.2 RED: decode packed back to [1,2,3]
-- [ ] 12.3 RED: decode unpacked form for scalar repeated
-- [ ] 12.4 RED: repeated message one entry per element round-trip
-- [ ] 12.5 RED: empty repeated omitted
-- [ ] 12.6 RED: mixed packed+unpacked concatenate in order
-- [ ] 12.7 GREEN: encode packed/unpacked + decode both
-- [ ] 12.8 REFACTOR: isolate packed-block reader
-- [ ] 12.9 Document POD (packed-by-default + lenient decode)
-- [ ] 12.10 Verify: `just check`
+- [x] 12.1 RED: repeated int32 [1,2,3] -> packed 5 bytes (T-codec-5)
+- [x] 12.2 RED: decode packed back to [1,2,3]
+- [x] 12.3 RED: decode unpacked form for scalar repeated
+- [x] 12.4 RED: repeated message one entry per element round-trip
+- [x] 12.5 RED: empty repeated omitted
+- [x] 12.6 RED: mixed packed+unpacked concatenate in order
+- [x] 12.7 GREEN: encode packed/unpacked + decode both
+- [x] 12.8 REFACTOR: isolate packed-block reader
+- [x] 12.9 Document POD (packed-by-default + lenient decode)
+- [x] 12.10 Verify: `just check`
 
 ### Step 13: Codec — maps
 - [ ] 13.1 RED: map<string,int32> sorted-by-key exact bytes (T-codec-6)
