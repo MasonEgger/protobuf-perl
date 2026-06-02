@@ -266,17 +266,17 @@ work completes. Each step ends by running `just check`.
 - [x] 21.10 Verify: `just check`
 
 ### Step 22: DescriptorSet load + resolver differential
-- [ ] 22.1 RED: t/descriptor/load.t — FDS load matches parser output (T-fds-1)
-- [ ] 22.2 RED: Type enum -> string id mapping table
-- [ ] 22.3 RED: corrupt FDS -> Codec (T-fds-3)
-- [ ] 22.4 RED: t/resolver/diff_protoc.t resolver matches protoc type_name (T-res-7)
-- [ ] 22.5 RED: t/descriptor/sdk_core.t sdk-core FDS all messages/fields (T-fds-2)
-- [ ] 22.6 GREEN: lib/Proto3/DescriptorSet/Proto.pm (bootstrap schema)
-- [ ] 22.7 GREEN: lib/Proto3/DescriptorSet.pm (load_file/load_string + resolve)
-- [ ] 22.8 GREEN: vendor share/.../descriptor.proto
-- [ ] 22.9 REFACTOR: reuse protoc harness
-- [ ] 22.10 Document POD (bootstrap + Type mapping)
-- [ ] 22.11 Verify: `just check`
+- [x] 22.1 RED: t/descriptor/load.t — FDS load matches parser output (T-fds-1)
+- [x] 22.2 RED: Type enum -> string id mapping table
+- [x] 22.3 RED: corrupt FDS -> Codec (T-fds-3)
+- [x] 22.4 RED: t/resolver/diff_protoc.t resolver matches protoc type_name (T-res-7)
+- [x] 22.5 RED: t/descriptor/sdk_core.t sdk-core FDS all messages/fields (T-fds-2)
+- [x] 22.6 GREEN: lib/Proto3/DescriptorSet/Proto.pm (bootstrap schema)
+- [x] 22.7 GREEN: lib/Proto3/DescriptorSet.pm (load_file/load_string + resolve)
+- [x] 22.8 GREEN: vendor share/.../descriptor.proto
+- [x] 22.9 REFACTOR: reuse protoc harness
+- [x] 22.10 Document POD (bootstrap + Type mapping)
+- [x] 22.11 Verify: `just check`
 
 ---
 
