@@ -2,6 +2,7 @@
 
 ## Recent
 <!-- 10 most recent lessons, newest first -->
+- A Grammar helper returning a list (e.g. `_parse_field_type` -> `($type, $type_name)`) must be called with a parenthesized lvalue (`my ($t) = ...`); a bare `my $t = ...` takes the LAST list element (the undef type_name), silently dropping the value. Bit the map-key parse until switched to list context (2026-06-01)
 - Perl 5.38.2 mis-parses a file-scope `sub (signature)` — named (`my sub f ($x){}`) OR anonymous (`my $f = sub ($x){}`) — when a `class` block follows it, dying "Subroutine attributes must come before the signature". Wrap such helper coderefs in a `do { ...; ($a,$b) }` block (the trick `%SCALAR_TYPE` already uses) to insulate the signatures (2026-05-31)
 - proto3 encodes a negative `int32`/`int64` as its full 64-bit two's complement (`2**64 + value`, always a 10-byte varint) — NOT as a plain varint (which rejects negatives) and NOT as zigzag (that's only `sint32`/`sint64`). Decode reverses it: a varint with bit 63 set is `value - 2**64` (2026-05-31)
 - `Proto3::Wire::decode_zigzag32/64` return ONLY the value, not `($value, $rest)` like the other `decode_*` — a codec consumer must read the varint separately to recover `$rest`, or the decode loop ends early and every field after a sint silently defaults (2026-05-31)
@@ -11,9 +12,9 @@
 - This Perl 5.38.2 build supports the `:param` field attribute but NOT `:reader` (rejected as "Unrecognized field attribute") — write explicit `method foo { $foo }` readers instead of relying on the plan's `field $x :param :reader` (2026-05-30)
 - Enable the `class` feature on this box with `use feature 'class'; no warnings 'experimental::class';` — `use v5.38` alone does not enable the field attributes, and the `experimental` pragma module is not installed (2026-05-30)
 - Under the 5.38 `class` feature a `method` has no class invocant, so it can't double as a `Foo->throw(message=>...)` constructor; use a plain `sub throw { die ref $_[0] ? $_[0] : $_[0]->new(@_[1..$#_]) }` inside the class block — it works dual-mode and inherits cleanly (2026-05-30)
-- This dev box has core Perl 5.38 + `prove` + `just` only — no `Test2::Suite`, `perlcritic`, `dzil`, or `cpanm`. Smoke/unit tests must run on core `Test::More` to be verifiable offline; treat the plan's `Test2::V1` preamble as CI-only or gate it behind availability (2026-05-30)
 
 ## Perl
+- A class helper returning a list must be called in list context (`my ($x) = ...`); a scalar assignment takes the last list element, silently swallowing earlier values (2026-06-01)
 - Perl 5.38.2 mis-parses a file-scope `sub (signature)` (named or anonymous) immediately before a `class` block ("Subroutine attributes must come before the signature"); wrap the coderefs in a `do {}` block to insulate the signatures (2026-05-31)
 - `decode_zigzag32/64` return a single value (not `($value, $rest)`), unlike every other `Proto3::Wire` `decode_*`; a consumer needing the remainder must decode the varint separately for `$rest` (2026-05-31)
 - A typed exception thrown via `Class->throw` must have its `:isa` declaration committed alongside the caller; an undeclared package autovivifies but `->throw`/`isa` fail at runtime, so the bug only surfaces on a clean checkout (2026-05-31)

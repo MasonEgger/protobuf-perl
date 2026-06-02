@@ -220,16 +220,16 @@ work completes. Each step ends by running `just check`.
 - [x] 17.9 Verify: `just check`
 
 ### Step 18: Grammar — nested/enum/oneof/map/reserved
-- [ ] 18.1 RED: nested message dotted full_name (T-parse-3)
-- [ ] 18.2 RED: enum allow_alias duplicates accepted/rejected (T-parse-4)
-- [ ] 18.3 RED: oneof members get oneof_index + Schema::Oneof (T-parse-5)
-- [ ] 18.4 RED: map desugars to synthetic MapEntry key=1/value=2 (T-parse-6)
-- [ ] 18.5 RED: reserved numbers (ranges incl. max) + names (T-parse-7)
-- [ ] 18.6 RED: interleaved comments don't break parsing (T-parse-10)
-- [ ] 18.7 GREEN: Grammar enum/oneof/map/reserved/nested recursion
-- [ ] 18.8 REFACTOR: reusable range-list parser
-- [ ] 18.9 Document POD
-- [ ] 18.10 Verify: `just check`
+- [x] 18.1 RED: nested message dotted full_name (T-parse-3)
+- [x] 18.2 RED: enum allow_alias duplicates accepted/rejected (T-parse-4)
+- [x] 18.3 RED: oneof members get oneof_index + Schema::Oneof (T-parse-5)
+- [x] 18.4 RED: map desugars to synthetic MapEntry key=1/value=2 (T-parse-6)
+- [x] 18.5 RED: reserved numbers (ranges incl. max) + names (T-parse-7)
+- [x] 18.6 RED: interleaved comments don't break parsing (T-parse-10)
+- [x] 18.7 GREEN: Grammar enum/oneof/map/reserved/nested recursion
+- [x] 18.8 REFACTOR: reusable range-list parser
+- [x] 18.9 Document POD
+- [x] 18.10 Verify: `just check`
 
 ### Step 19: Parser facade — files/includes/options/services
 - [ ] 19.1 RED: include_paths multi-root, first match, abs-path cache
