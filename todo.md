@@ -356,17 +356,17 @@ work completes. Each step ends by running `just check`.
 - [x] 28.11 Verify: `just check`
 
 ### Step 29: JSON decode + protoc differential
-- [ ] 29.1 RED: all scalar round-trip (T-json-1)
-- [ ] 29.2 RED: int64 from string AND number (T-json-2 dec)
-- [ ] 29.3 RED: enum from name AND number (T-json-3 dec)
-- [ ] 29.4 RED: accept camelCase AND snake_case
-- [ ] 29.5 RED: unknown skipped; reject_unknown_fields raises
-- [ ] 29.6 RED: invalid JSON -> JSON::Parse; string-in-int -> TypeMismatch; bad WKT -> JSON::WKT
-- [ ] 29.7 RED: t/json/diff_protoc.t skip_all unless protoc (T-json-7)
-- [ ] 29.8 GREEN: Codec::decode_json + JSON decode + WKT delegation
-- [ ] 29.9 REFACTOR: shared camel<->snake normalization
-- [ ] 29.10 Document POD (decode leniency)
-- [ ] 29.11 Verify: `just check`
+- [x] 29.1 RED: all scalar round-trip (T-json-1)
+- [x] 29.2 RED: int64 from string AND number (T-json-2 dec)
+- [x] 29.3 RED: enum from name AND number (T-json-3 dec)
+- [x] 29.4 RED: accept camelCase AND snake_case
+- [x] 29.5 RED: unknown skipped; reject_unknown_fields raises
+- [x] 29.6 RED: invalid JSON -> JSON::Parse; string-in-int -> TypeMismatch; bad WKT -> JSON::WKT
+- [x] 29.7 RED: t/json/diff_protoc.t skip_all unless protoc (T-json-7)
+- [x] 29.8 GREEN: Codec::decode_json + JSON decode + WKT delegation
+- [x] 29.9 REFACTOR: shared camel<->snake normalization
+- [x] 29.10 Document POD (decode leniency)
+- [x] 29.11 Verify: `just check`
 
 ---
 

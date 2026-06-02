@@ -44,6 +44,17 @@ my $camel_case = do {
     };
 };
 
+# Convert a camelCase name to snake_case (dataBlob -> data_blob). The inverse of
+# $camel_case, used on decode to normalize an incoming JSON key to the proto
+# field name so both spellings of a key resolve to the same field. Same pre-class
+# lexical / do{} wrapper rationale as $camel_case above.
+my $snake_case = do {
+    sub ($name) {
+        $name =~ s/([A-Z])/_\L$1/g;
+        return $name;
+    };
+};
+
 class Proto3::JSON {
     field $codec :param;
     field $schema :param;
@@ -249,6 +260,212 @@ class Proto3::JSON {
         return length("$value") == 0 if $type eq 'string' || $type eq 'bytes';
         return $value == 0;
     }
+
+    # decode($full_name, $json_string, %opts) -> a field-name-keyed hashref.
+    #
+    # Parse the JSON text (a malformed document raises JSON::Parse) then map the
+    # decoded JSON structure onto the message named $full_name, producing the same
+    # hashref shape Proto3::Codec uses. Input is lenient per the proto3 JSON spec
+    # (§4.9): both camelCase and snake_case keys, both string and number for
+    # 64-bit integers, both name and number for enums. Option:
+    #   reject_unknown_fields  raise JSON::Parse on a JSON key matching no field
+    method decode ($full_name, $json_string, %opts) {
+        my $parsed = $self->_parse_json($json_string);
+        return $self->_from_json_structure( $full_name, $parsed, \%opts );
+    }
+
+    # Parse a JSON string, translating any JSON::PP failure into a
+    # Proto3::Exception::JSON::Parse so callers see one library-native error type.
+    method _parse_json ($json_string) {
+        my $parsed = eval { JSON::PP->new->decode($json_string) };
+        if ($@) {
+            my $detail = $@;
+            $detail =~ s/\s+\z//;
+            Proto3::Exception::JSON::Parse->throw(
+                message => "invalid JSON: $detail",
+            );
+        }
+        return $parsed;
+    }
+
+    # Map a decoded JSON value ($json) onto the message named $full_name. A
+    # well-known type with a special JSON form is delegated to its WKT
+    # from_json_value handler; every other message walks the JSON object's keys.
+    method _from_json_structure ($full_name, $json, $opts) {
+        if ( $self->_is_wkt($full_name) ) {
+            return $self->_wkt_from_json( $full_name, $json );
+        }
+
+        my $message = $schema->message($full_name);
+        if ( !defined $message ) {
+            Proto3::Exception::Codec::UnknownType->throw(
+                message => "unknown message type: $full_name",
+            );
+        }
+
+        # Index the message's fields by every JSON key that may name them: the
+        # proto name, the camelCase json_name, and the snake_case spelling of the
+        # json_name (so a camelCase incoming key and a snake_case one both hit).
+        my %field_by_key;
+        for my $field ( @{ $message->fields } ) {
+            my $name = $field->name;
+            my $json_name = $field->json_name // $camel_case->($name);
+            $field_by_key{$name}                 = $field;
+            $field_by_key{$json_name}            = $field;
+            $field_by_key{ $snake_case->($json_name) } = $field;
+        }
+
+        my %out;
+        for my $key ( keys %$json ) {
+            my $field = $field_by_key{$key};
+            if ( !$field ) {
+                next unless $opts->{reject_unknown_fields};
+                Proto3::Exception::JSON::Parse->throw(
+                    message => "unknown field '$key' in message $full_name",
+                );
+            }
+            my $value = $json->{$key};
+            next unless defined $value;    # JSON null leaves the field unset
+            $out{ $field->name } =
+                $self->_decode_field( $field, $value, $opts );
+        }
+        return \%out;
+    }
+
+    # Decode one JSON field value into its codec-shaped Perl value, dispatching by
+    # field kind: map, repeated, singular message, enum, then scalar.
+    method _decode_field ($field, $value, $opts) {
+        return $self->_decode_map( $field, $value, $opts )    if $field->is_map;
+        if ( $field->is_repeated ) {
+            return [ map { $self->_decode_element( $field, $_, $opts ) }
+                    @$value ];
+        }
+        return $self->_decode_message_value( $field, $value, $opts )
+            if $field->is_message;
+        return $self->_decode_enum( $field, $value ) if $field->is_enum;
+        return $self->_decode_scalar( $field, $field->type, $value );
+    }
+
+    # Decode one element of a repeated field (a scalar, enum, or message). The
+    # array container itself is handled by the caller.
+    method _decode_element ($field, $value, $opts) {
+        return $self->_decode_message_value( $field, $value, $opts )
+            if $field->is_message;
+        return $self->_decode_enum( $field, $value ) if $field->is_enum;
+        return $self->_decode_scalar( $field, $field->type, $value );
+    }
+
+    # Decode a singular message-typed JSON value: delegate to the field type's WKT
+    # from_json handler when it is a well-known type, else recurse as a nested
+    # message.
+    method _decode_message_value ($field, $value, $opts) {
+        my $type_name = $self->_field_type_name($field);
+        if ( $self->_is_wkt($type_name) ) {
+            return $self->_wkt_from_json( $type_name, $value );
+        }
+        return $self->_from_json_structure( $type_name, $value, $opts );
+    }
+
+    # Decode an enum JSON value to its integer number. A string is looked up in
+    # the enum's value table (its symbolic name); a number is taken as-is (an
+    # unknown enumerator number is preserved, matching the binary codec).
+    method _decode_enum ($field, $value) {
+        if ( !Scalar::Util::looks_like_number($value) ) {
+            my $number = $self->_enum_number( $field, "$value" );
+            if ( !defined $number ) {
+                Proto3::Exception::Codec::TypeMismatch->throw(
+                    message => sprintf(
+                        'enum field %s has no value named %s',
+                        $field->name, "'$value'",
+                    ),
+                );
+            }
+            return $number;
+        }
+        return $value + 0;
+    }
+
+    # The integer number of enumerator $name for an enum-typed field, or undef
+    # when the enum or the name is unknown.
+    method _enum_number ($field, $name) {
+        my $enum = $self->_field_enum($field) or return undef;
+        for my $v ( @{ $enum->values } ) {
+            return $v->{number} if $v->{name} eq $name;
+        }
+        return undef;
+    }
+
+    # Decode a scalar JSON value per the field's proto3 type. 64-bit integers
+    # accept both a JSON string and a JSON number; bytes decode from base64; bool
+    # accepts JSON true/false (a JSON::PP::Boolean) and is normalized to 1/0; the
+    # 32-bit integers and floats take the numeric value. A non-numeric value for a
+    # numeric field raises TypeMismatch.
+    method _decode_scalar ($field, $type, $value) {
+        return MIME::Base64::decode_base64("$value") if $type eq 'bytes';
+        return $value ? 1 : 0 if $type eq 'bool';
+        return "$value" if $type eq 'string';
+
+        # Every remaining scalar type is numeric. A 64-bit type arrives as either
+        # a quoted string or a bare number; either way it must look numeric.
+        if ( !Scalar::Util::looks_like_number($value) ) {
+            Proto3::Exception::Codec::TypeMismatch->throw(
+                message => sprintf(
+                    'field %s expected %s, got non-numeric %s',
+                    $field->name, $type, "'$value'",
+                ),
+            );
+        }
+        return $value + 0;
+    }
+
+    # Decode a map field from a JSON object into a { key => value } hashref. Each
+    # object value is decoded per the value field's kind (via the synthetic
+    # value field at number 2 in the MapEntry).
+    method _decode_map ($field, $object, $opts) {
+        my $entry_name = $self->_field_type_name($field);
+        my $entry      = $schema->message($entry_name);
+        my ($value_field) = grep { $_->number == 2 } @{ $entry->fields };
+
+        my %out;
+        for my $key ( keys %$object ) {
+            $out{$key} =
+                $self->_decode_element( $value_field, $object->{$key}, $opts );
+        }
+        return \%out;
+    }
+
+    # True when $full_name is a well-known type with a special JSON form.
+    method _is_wkt ($full_name) {
+        return defined Proto3::WKT->json_handler($full_name);
+    }
+
+    # Delegate $json to the WKT from_json_value handler for $full_name, wrapping
+    # any failure (a malformed special form, e.g. a bad RFC3339 timestamp) as
+    # Proto3::Exception::JSON::WKT. The handlers have differing arities — Any
+    # needs the codec, the wrappers take the full name — so dispatch is per class.
+    method _wkt_from_json ($full_name, $json) {
+        my $handler = Proto3::WKT->json_handler($full_name);
+
+        my $result = eval {
+            $handler eq 'Proto3::WKT::Any'      ? $handler->from_json_value( $json, $codec )
+            : $handler eq 'Proto3::WKT::Wrappers' ? $handler->from_json_value( $full_name, $json )
+            :                                       $handler->from_json_value($json);
+        };
+        if ($@) {
+            my $err = $@;
+            # A WKT handler that already raised a typed JSON::WKT error passes
+            # through unchanged; any other failure is wrapped as one.
+            die $err
+                if Scalar::Util::blessed($err)
+                && $err->isa('Proto3::Exception::JSON::WKT');
+            my $detail = ref $err ? "$err" : $err;
+            $detail =~ s/\s+\z//;
+            Proto3::Exception::JSON::WKT->throw(
+                message => "malformed JSON form for $full_name: $detail",
+            );
+        }
+        return $result;
+    }
 }
 
 1;
@@ -291,6 +508,15 @@ L<Proto3::Schema>.
 
 Encode C<\%values> as the message named C<$full_name> and return a JSON string
 with deterministic (canonical) key order.
+
+=head2 decode
+
+    my $values = $json->decode( $full_name, $json_string, %opts );
+
+Parse C<$json_string> and map it onto the message named C<$full_name>, returning
+the same field-name-keyed hashref shape L<Proto3::Codec> uses (so it can be
+re-encoded to the wire). Decoding is B<lenient> per the proto3 JSON spec; see
+L</DECODING RULES>. The only option is C<< reject_unknown_fields => 1 >>.
 
 =head1 ENCODING RULES
 
@@ -338,6 +564,76 @@ JSON form (L<Proto3::WKT::Timestamp>, L<Proto3::WKT::Duration>, the wrappers,
 C<Any>, C<Struct>/C<Value>/C<ListValue>, C<FieldMask>, C<Empty>) is delegated to
 that type's C<to_json_value>, so e.g. a C<Timestamp> renders as an RFC3339
 string rather than a C<{ seconds, nanos }> object.
+
+=back
+
+=head1 DECODING RULES
+
+C<decode> is deliberately B<lenient> on input, accepting more than C<encode>
+produces (proto3 JSON spec, §4.9):
+
+=over 4
+
+=item *
+
+B<Field names.> A JSON key may be either the field's B<camelCase> C<json_name>
+or its raw B<snake_case> proto name; both resolve to the same field.
+
+=item *
+
+B<64-bit integers.> C<int64>, C<uint64>, C<fixed64>, and C<sfixed64> decode from
+B<both> a quoted JSON string and a bare JSON number.
+
+=item *
+
+B<Enums.> An enum value decodes from B<both> its symbolic B<name> (a JSON
+string) and its B<number>. An unknown enumerator number is preserved as the
+integer.
+
+=item *
+
+B<Booleans> accept JSON C<true>/C<false> (normalized to C<1>/C<0>); B<bytes>
+decode from a base64 string.
+
+=item *
+
+B<Null.> A JSON C<null> value leaves the field unset.
+
+=item *
+
+B<Unknown fields.> A JSON key matching no field is B<silently skipped> by
+default; C<< reject_unknown_fields => 1 >> raises
+L<Proto3::Exception::JSON::Parse> instead.
+
+=item *
+
+B<Maps> decode from JSON B<objects>; B<repeated> fields from JSON B<arrays>.
+
+=item *
+
+B<Well-known types.> A field (or top-level message) whose type has a special
+JSON form is delegated to that type's C<from_json_value>, so e.g. an RFC3339
+string decodes into a C<Timestamp>'s C<{ seconds, nanos }>.
+
+=back
+
+=head1 FAILURE MODES
+
+=over 4
+
+=item *
+
+Malformed JSON text raises L<Proto3::Exception::JSON::Parse>.
+
+=item *
+
+A value whose type clashes with the field (e.g. a non-numeric string in an
+C<int32>) raises L<Proto3::Exception::Codec::TypeMismatch>.
+
+=item *
+
+A well-known type with a malformed string form (e.g. a bad RFC3339 timestamp)
+raises L<Proto3::Exception::JSON::WKT>.
 
 =back
 

@@ -486,6 +486,20 @@ class Proto3::Codec {
         return $json->encode( $full_name, $values, %opts );
     }
 
+    # decode_json($full_name, $json_string, %opts) -> hashref of field => value.
+    #
+    # Thin adapter: build a Proto3::JSON bound to this codec and its schema, then
+    # delegate. The decoded hashref uses the same field-name-keyed shape encode/
+    # decode use, so it can be re-encoded to the wire. Input is lenient (both
+    # camelCase and snake_case keys, both string and number for 64-bit integers,
+    # both name and number for enums); see Proto3::JSON for the full rules and the
+    # reject_unknown_fields option.
+    method decode_json ($full_name, $json_string, %opts) {
+        require Proto3::JSON;
+        my $json = Proto3::JSON->new( codec => $self, schema => $schema );
+        return $json->decode( $full_name, $json_string, %opts );
+    }
+
     # decode($full_name, $bytes) -> hashref of field name => value.
     #
     # Looks up the message by fully-qualified name (UnknownType if absent), then
@@ -803,6 +817,16 @@ Decode wire C<$bytes> into a hashref keyed by field name, for the message named
 C<$full_name>. The wire is read record-by-record: each tag is dispatched on its
 field number, known singular scalar fields are decoded by type, and a duplicate
 tag for a singular field keeps the last value seen.
+
+=head2 encode_json / decode_json
+
+    my $json   = $codec->encode_json( $full_name, \%values, %opts );
+    my $values = $codec->decode_json( $full_name, $json,    %opts );
+
+Encode a value hashref to a canonical proto3 JSON string, or decode such a
+string back to the hashref shape C<decode> produces. Both delegate to
+L<Proto3::JSON>; see that module for the encoding rules, the lenient decoding
+rules, and the available options.
 
 =head1 ENCODING BEHAVIOR
 
