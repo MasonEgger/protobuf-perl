@@ -269,9 +269,10 @@ sub Proto3::DescriptorSet::_build_enum {
         @{ $desc->{value} // [] };
 
     return Proto3::Schema::Enum->new(
-        name      => $name,
-        full_name => $full_name,
-        values    => \@values,
+        name        => $name,
+        full_name   => $full_name,
+        values      => \@values,
+        allow_alias => ( $desc->{options}{allow_alias} // 0 ) ? 1 : 0,
     );
 }
 

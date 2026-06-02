@@ -373,16 +373,16 @@ work completes. Each step ends by running `just check`.
 ## Phase 6 — Conformance suite
 
 ### Step 30: Conformance testee
-- [ ] 30.1 RED: ConformanceRequest proto->proto re-encode (t/conformance/testee.t)
-- [ ] 30.2 RED: unparseable -> parse_error response
-- [ ] 30.3 RED: unsupported -> skipped
-- [ ] 30.4 RED: JSON<->proto cross-format paths
-- [ ] 30.5 GREEN: vendor conformance.proto + protobuf_test_messages proto3
-- [ ] 30.6 GREEN: lib/Proto3/Conformance.pm handle_request
-- [ ] 30.7 GREEN: bin/proto3-conformance (stdin/stdout loop)
-- [ ] 30.8 REFACTOR: thin bin, logic in module
-- [ ] 30.9 Document POD + usage
-- [ ] 30.10 Verify: `just check`
+- [x] 30.1 RED: ConformanceRequest proto->proto re-encode (t/conformance/testee.t)
+- [x] 30.2 RED: unparseable -> parse_error response
+- [x] 30.3 RED: unsupported -> skipped
+- [x] 30.4 RED: JSON<->proto cross-format paths
+- [x] 30.5 GREEN: vendor conformance.proto + protobuf_test_messages proto3
+- [x] 30.6 GREEN: lib/Proto3/Conformance.pm handle_request
+- [x] 30.7 GREEN: bin/proto3-conformance (stdin/stdout loop)
+- [x] 30.8 REFACTOR: thin bin, logic in module
+- [x] 30.9 Document POD + usage
+- [x] 30.10 Verify: `just check`
 
 ### Step 31: Run suite + CI gate
 - [ ] 31.1 RED: t/conformance/run_suite.t skip_all unless runner available

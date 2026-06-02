@@ -1,0 +1,147 @@
+# ABOUTME: Step 30 — drives Proto3::Conformance::handle_request directly with a
+# ConformanceRequest and asserts the ConformanceResponse (no external runner).
+use v5.38;
+use warnings;
+use Test::More;
+use lib 'lib';
+
+use Proto3::Conformance;
+use Proto3::DescriptorSet;
+use Proto3::Codec;
+use Proto3::JSON;
+
+# ----------------------------------------------------------------------
+# The conformance schema (ConformanceRequest/Response + the test message
+# protobuf_test_messages.proto3.TestAllTypesProto3) is vendored as a binary
+# FileDescriptorSet at share/proto/conformance.fds. handle_request builds its
+# own codec/JSON from that schema; here we build a parallel codec/JSON to
+# author request payloads and verify response payloads.
+# ----------------------------------------------------------------------
+
+my $schema = Proto3::DescriptorSet->load_file('share/proto/conformance.fds');
+my $codec  = Proto3::Codec->new( schema => $schema );
+my $json   = Proto3::JSON->new( codec => $codec, schema => $schema );
+
+my $REQUEST  = 'conformance.ConformanceRequest';
+my $RESPONSE = 'conformance.ConformanceResponse';
+my $TESTMSG  = 'protobuf_test_messages.proto3.TestAllTypesProto3';
+
+# WireFormat enum: PROTOBUF=1, JSON=2.
+my $WIRE_PROTOBUF = 1;
+my $WIRE_JSON     = 2;
+
+# Build a ConformanceRequest hashref into wire bytes, run the handler, and decode
+# the ConformanceResponse it returns. handle_request takes/returns raw bytes.
+sub run_request ($request_hashref) {
+    my $request_bytes  = $codec->encode( $REQUEST, $request_hashref );
+    my $response_bytes = Proto3::Conformance::handle_request($request_bytes);
+    return $codec->decode( $RESPONSE, $response_bytes );
+}
+
+# A simple TestAllTypesProto3 payload exercised across formats. optional_int32 is
+# field 1, optional_string is field 14 in the test message.
+my $PAYLOAD = { optional_int32 => 42, optional_string => 'conformance' };
+
+# --- 30.1: proto-input -> proto-output re-encodes correctly -------------------
+{
+    my $payload_bytes = $codec->encode( $TESTMSG, $PAYLOAD );
+    my $resp = run_request(
+        {
+            protobuf_payload        => $payload_bytes,
+            requested_output_format => $WIRE_PROTOBUF,
+            message_type            => $TESTMSG,
+        }
+    );
+
+    ok( exists $resp->{protobuf_payload}, '30.1 proto->proto sets protobuf_payload' );
+    ok( !exists $resp->{parse_error}, '30.1 proto->proto has no parse_error' );
+
+    my $decoded = $codec->decode( $TESTMSG, $resp->{protobuf_payload} );
+    is( $decoded->{optional_int32},  42,            '30.1 round-trips optional_int32' );
+    is( $decoded->{optional_string}, 'conformance', '30.1 round-trips optional_string' );
+}
+
+# --- 30.2: unparseable protobuf payload -> parse_error ------------------------
+{
+    # 0x08 is a tag for field 1 varint; truncating the varint body makes the
+    # payload undecodable, so parsing the inner test message must fail.
+    my $resp = run_request(
+        {
+            protobuf_payload        => "\x08",
+            requested_output_format => $WIRE_PROTOBUF,
+            message_type            => $TESTMSG,
+        }
+    );
+
+    ok( exists $resp->{parse_error}, '30.2 unparseable -> parse_error set' );
+    ok( length $resp->{parse_error}, '30.2 parse_error carries a message' );
+    ok( !exists $resp->{protobuf_payload},
+        '30.2 unparseable -> no protobuf_payload' );
+}
+
+# --- 30.3: unsupported feature (JSPB / TEXT_FORMAT output) -> skipped ----------
+{
+    my $WIRE_TEXT_FORMAT = 4;
+    my $payload_bytes    = $codec->encode( $TESTMSG, $PAYLOAD );
+    my $resp = run_request(
+        {
+            protobuf_payload        => $payload_bytes,
+            requested_output_format => $WIRE_TEXT_FORMAT,
+            message_type            => $TESTMSG,
+        }
+    );
+
+    ok( exists $resp->{skipped}, '30.3 unsupported output format -> skipped' );
+    ok( length $resp->{skipped}, '30.3 skipped carries a reason' );
+}
+
+# --- 30.4a: JSON-input -> proto-output round-trips ----------------------------
+{
+    my $json_payload = $json->encode( $TESTMSG, $PAYLOAD );
+    my $resp = run_request(
+        {
+            json_payload            => $json_payload,
+            requested_output_format => $WIRE_PROTOBUF,
+            message_type            => $TESTMSG,
+        }
+    );
+
+    ok( exists $resp->{protobuf_payload}, '30.4a JSON->proto sets protobuf_payload' );
+    my $decoded = $codec->decode( $TESTMSG, $resp->{protobuf_payload} );
+    is( $decoded->{optional_int32},  42,            '30.4a JSON->proto int32' );
+    is( $decoded->{optional_string}, 'conformance', '30.4a JSON->proto string' );
+}
+
+# --- 30.4b: proto-input -> JSON-output round-trips ----------------------------
+{
+    my $payload_bytes = $codec->encode( $TESTMSG, $PAYLOAD );
+    my $resp = run_request(
+        {
+            protobuf_payload        => $payload_bytes,
+            requested_output_format => $WIRE_JSON,
+            message_type            => $TESTMSG,
+        }
+    );
+
+    ok( exists $resp->{json_payload}, '30.4b proto->JSON sets json_payload' );
+    my $decoded = $json->decode( $TESTMSG, $resp->{json_payload} );
+    is( $decoded->{optional_int32},  42,            '30.4b proto->JSON int32' );
+    is( $decoded->{optional_string}, 'conformance', '30.4b proto->JSON string' );
+}
+
+# --- 30.4c: invalid JSON input -> parse_error (not a crash) -------------------
+{
+    my $resp = run_request(
+        {
+            json_payload            => '{ this is not json',
+            requested_output_format => $WIRE_PROTOBUF,
+            message_type            => $TESTMSG,
+        }
+    );
+
+    ok( exists $resp->{parse_error}, '30.4c invalid JSON -> parse_error' );
+    ok( !exists $resp->{protobuf_payload},
+        '30.4c invalid JSON -> no protobuf_payload' );
+}
+
+done_testing;

@@ -163,6 +163,15 @@ class Proto3::DescriptorSet::Proto {
             fields    => [
                 Proto3::DescriptorSet::Proto::_scalar( 'name',  1, 'string' ),
                 Proto3::DescriptorSet::Proto::_rep_message( 'value', 2, "$G.EnumValueDescriptorProto" ),
+                Proto3::DescriptorSet::Proto::_message( 'options', 3, "$G.EnumOptions" ),
+            ],
+        );
+
+        my $enum_options = Proto3::Schema::Message->new(
+            name      => 'EnumOptions',
+            full_name => "$G.EnumOptions",
+            fields    => [
+                Proto3::DescriptorSet::Proto::_scalar( 'allow_alias', 2, 'bool' ),
             ],
         );
 
@@ -194,6 +203,7 @@ class Proto3::DescriptorSet::Proto {
                 $message_options,
                 $field_descriptor_proto,
                 $enum_descriptor_proto,
+                $enum_options,
                 $enum_value_descriptor_proto,
                 $oneof_descriptor_proto,
             ],
