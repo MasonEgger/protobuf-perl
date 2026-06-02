@@ -320,16 +320,16 @@ work completes. Each step ends by running `just check`.
 ## Phase 5 — WKT + JSON mapping
 
 ### Step 26: WKT schemas + Timestamp/Duration
-- [ ] 26.1 RED: Timestamp binary + JSON RFC3339 round-trip (T-wkt-1)
-- [ ] 26.2 RED: Timestamp from_epoch
-- [ ] 26.3 RED: Duration fractional "1.500s" <-> 1.5s + negatives (T-wkt-2)
-- [ ] 26.4 RED: malformed RFC3339/duration -> JSON::WKT
-- [ ] 26.5 GREEN: vendor google.protobuf WKT .proto files
-- [ ] 26.6 GREEN: WKT/Timestamp.pm + Duration.pm (to/from_json_value)
-- [ ] 26.7 GREEN: lib/Proto3/WKT.pm facade
-- [ ] 26.8 REFACTOR: shared RFC3339/fractional helpers
-- [ ] 26.9 Document POD (JSON-form table)
-- [ ] 26.10 Verify: `just check`
+- [x] 26.1 RED: Timestamp binary + JSON RFC3339 round-trip (T-wkt-1)
+- [x] 26.2 RED: Timestamp from_epoch
+- [x] 26.3 RED: Duration fractional "1.500s" <-> 1.5s + negatives (T-wkt-2)
+- [x] 26.4 RED: malformed RFC3339/duration -> JSON::WKT
+- [x] 26.5 GREEN: vendor google.protobuf WKT .proto files
+- [x] 26.6 GREEN: WKT/Timestamp.pm + Duration.pm (to/from_json_value)
+- [x] 26.7 GREEN: lib/Proto3/WKT.pm facade
+- [x] 26.8 REFACTOR: shared RFC3339/fractional helpers
+- [x] 26.9 Document POD (JSON-form table)
+- [x] 26.10 Verify: `just check`
 
 ### Step 27: WKT — Any/Struct/FieldMask/Wrappers/Empty
 - [ ] 27.1 RED: Empty <-> {}
