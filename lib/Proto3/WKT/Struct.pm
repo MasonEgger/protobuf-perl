@@ -178,8 +178,29 @@ NullValue maps between the enum number C<0> and C<undef> (JSON null).
 
 =head1 METHODS
 
-Each class provides C<schema_message> (or C<schema_enum> for NullValue) returning
-a fresh canonical schema element, plus C<to_json_value> / C<from_json_value>.
+Each class in this family provides the same set of class methods:
+
+=over 4
+
+=item C<schema_message>
+
+Returns a fresh canonical L<Proto3::Schema::Message> for the type.
+(C<Proto3::WKT::NullValue> instead provides C<schema_enum>, since it is an enum.)
+
+=item C<schema_enum>
+
+I<(C<Proto3::WKT::NullValue> only.)> Returns a fresh canonical
+L<Proto3::Schema::Enum> for C<google.protobuf.NullValue>.
+
+=item C<to_json_value($value)>
+
+Maps the internal value to its proto3 JSON form.
+
+=item C<from_json_value($json)>
+
+Maps a decoded JSON value back to the internal form.
+
+=back
 
 =head1 LICENSE
 

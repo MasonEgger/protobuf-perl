@@ -47,6 +47,34 @@ Proto3::Schema::Enum - An enum type within a schema
 Models a proto3 enum: its short and fully-qualified names plus its values
 (C<{ name, number }> hashrefs).
 
+=head1 ACCESSORS
+
+Each returns the correspondingly-named construction value.
+
+=over 4
+
+=item C<name>
+
+The enum's short name.
+
+=item C<full_name>
+
+The enum's fully-qualified, package-prefixed name.
+
+=item C<values>
+
+An arrayref of C<< { name, number } >> value hashrefs.
+
+=item C<allow_alias>
+
+True when the enum permits two values to share a number.
+
+=item C<options>
+
+A hashref of enum-level options.
+
+=back
+
 =head1 CONSTRUCTION INVARIANTS
 
 When C<allow_alias> is false (the default), two values may not share the same

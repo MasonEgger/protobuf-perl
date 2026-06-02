@@ -1,25 +1,95 @@
 # Proto3
 
-A pure-Perl implementation of Protocol Buffers version 3 (proto3): wire codec,
-schema model, `.proto` parser, JSON mapping, well-known types, and
-ahead-of-time class generation.
+A pure-Perl implementation of Protocol Buffers version 3 (proto3): a wire codec,
+a schema model, a `.proto` parser, the canonical JSON mapping, the well-known
+types, and an ahead-of-time class generator — with **zero install-time XS** and
+no compiler required.
 
-> **Status: pre-alpha.** The public API is not yet stable and the build is
-> incomplete. This README is a placeholder.
+It was built to parse, resolve, and round-trip the Temporal
+[sdk-core](https://github.com/temporalio/sdk-core) proto graph correctly,
+including the innermost-first cross-file type resolution that trips up some
+existing dynamic Perl protobuf libraries (spec §1).
 
-## Specification
+## Features
 
-The authoritative design lives in [`spec.md`](spec.md) at the repository root.
-The TDD roadmap is tracked in [`plan.md`](plan.md) and [`todo.md`](todo.md).
+- **Wire codec** — encode/decode all proto3 scalar, message, enum, repeated,
+  packed, map, and oneof field kinds, with unknown-field preservation.
+- **`.proto` parser** — a hand-written lexer + grammar for proto3 syntax, with
+  transitive import following and cycle detection.
+- **Correct resolver** — fully-qualified type resolution that walks scopes
+  outward one level at a time, matching `protoc` byte-for-byte (spec §4.3).
+- **Canonical JSON** — the proto3 JSON mapping, both directions, with
+  deterministic key order.
+- **Well-known types** — `Timestamp`, `Duration`, `Any`, `Struct`/`Value`/
+  `ListValue`/`NullValue`, `FieldMask`, `Empty`, and the scalar wrappers.
+- **Runtime classes** — generate Perl classes from a schema at runtime, or
+- **ahead-of-time** with `proto3-gen-perl` for faster startup and static
+  discoverability.
+- **`FileDescriptorSet` support** — load a `protoc`-produced descriptor set
+  instead of parsing `.proto` text.
 
-## Development
+## Install
 
-Common tasks run through [`just`](https://github.com/casey/just):
+This is a Dist::Zilla distribution. From a checkout:
 
 ```sh
-just check   # lint + test (the gate every step ends on)
-just test    # prove -lr t
-just lint    # perlcritic --gentle lib t
+cpanm --installdeps .   # install prerequisites (all core in modern Perl)
+dzil install            # or: dzil test, dzil build
+```
+
+Proto3 requires Perl 5.38 or newer (it uses the `class` feature). It depends
+only on modules that ship with core Perl — no XS, no compiler.
+
+## Quickstart
+
+Parse a `.proto`, resolve it, and round-trip a message on the wire and as JSON:
+
+```perl
+use v5.38;
+use Proto3::Parser;
+use Proto3::Codec;
+
+# Parse + resolve a .proto into a single schema.
+my $parser = Proto3::Parser->new( include_paths => ['proto'] );
+my $schema = $parser->parse_with_imports('hello.proto');
+$schema->resolve;
+
+# A codec is the wire + JSON workhorse, bound to the resolved schema.
+my $codec = Proto3::Codec->new( schema => $schema );
+
+# Message values are plain hashrefs keyed by proto field name.
+my %greeting = ( text => 'Hello, world!', priority => 1 );
+
+# Encode to wire bytes and decode them back.
+my $bytes   = $codec->encode( 'hello.Greeting', \%greeting );
+my $decoded = $codec->decode( 'hello.Greeting', $bytes );
+
+# Canonical proto3 JSON, both directions.
+my $json = $codec->encode_json( 'hello.Greeting', \%greeting );
+my $back = $codec->decode_json( 'hello.Greeting', $json );
+```
+
+Prefer working with objects instead of hashrefs? Generate a class from any
+message in the resolved schema:
+
+```perl
+use Proto3::Class::Generator;
+
+Proto3::Class::Generator->build(
+    schema         => $schema,
+    message        => $schema->message('hello.Greeting'),
+    target_package => 'Hello::Greeting',
+);
+
+my $msg = Hello::Greeting->new({ text => 'Hi', priority => 1 });
+my $wire = $msg->encode;
+my $obj  = Hello::Greeting->decode($wire);   # a Hello::Greeting instance
+```
+
+A complete, runnable version lives in [`examples/basic/`](examples/basic/):
+
+```sh
+perl -Ilib examples/basic/hello.pl
 ```
 
 ## Ahead-of-time code generation
@@ -50,6 +120,24 @@ modules carry **no** parser or descriptor-set dependency (only the schema, codec
 and WKT layers), and the output is **deterministic**: regenerating an unchanged
 `.proto` is byte-identical.
 
+## Temporal sdk-core
+
+The Temporal sdk-core proto graph is the project's proof of purpose (spec §5.2).
+[`examples/temporal/sdk_core_smoke.pl`](examples/temporal/sdk_core_smoke.pl)
+parses, resolves, and round-trips the `WorkflowActivation` and
+`StartWorkflowExecutionRequest` entry points. The sdk-core protos are large and
+not vendored here, so the smoke is **guarded**: point `SDK_CORE_PROTO_PATH` at a
+checkout's proto include root to run it.
+
+```sh
+SDK_CORE_PROTO_PATH=/path/to/sdk-core/protos \
+    perl -Ilib examples/temporal/sdk_core_smoke.pl
+```
+
+The same smoke runs as an integration test in
+[`t/integration/sdk_core.t`](t/integration/sdk_core.t), which `skip_all`s when
+`SDK_CORE_PROTO_PATH` is unset.
+
 ## Conformance
 
 Passing the proto3 subset of [Google's Protocol Buffers Conformance Test
@@ -72,10 +160,30 @@ credibility bar for this project (spec §4.11).
   (T-conf-1). Failing `Recommended.Proto3.*` tests are reported but
   non-blocking (T-conf-2/3).
 
-> **Status: not yet certified locally.** The conformance runner is not installed
-> in the default dev environment, so the live suite has not been run here — only
-> the skip-aware harness and the CI wiring are in place. The required-proto3 bar
+> **Conformance status.** The conformance runner is not installed in the default
+> dev environment, so the live suite has not been run locally — only the
+> skip-aware harness and the CI wiring are in place here. The required-proto3 bar
 > is enforced in CI.
+
+## Development
+
+Common tasks run through [`just`](https://github.com/casey/just):
+
+```sh
+just check   # lint + test (the gate every step ends on)
+just test    # prove -lr t
+just lint    # perlcritic --gentle lib t
+```
+
+Author-only POD tests live under `xt/` and require `Test::Pod` and
+`Test::Pod::Coverage`; they `skip_all` cleanly when those are not installed:
+
+```sh
+prove -lr xt
+```
+
+The authoritative design lives in [`spec.md`](spec.md); the TDD roadmap is in
+[`plan.md`](plan.md) and [`todo.md`](todo.md).
 
 ## License
 

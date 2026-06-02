@@ -8,5 +8,11 @@ requires 'Math::BigInt';
 requires 'Encode';
 
 on 'test' => sub {
-    requires 'Test2::V0';
+    requires 'Test::More';
+};
+
+# Author-only POD tests under xt/ (skipped when these are absent).
+on 'develop' => sub {
+    requires 'Test::Pod';
+    requires 'Test::Pod::Coverage';
 };

@@ -71,6 +71,58 @@ Within a single message, both field B<numbers> and field B<names> must be
 unique; either collision raises C<Proto3::Exception::Schema::DuplicateField> at
 construction.
 
+=head1 ACCESSORS
+
+Each returns the correspondingly-named construction value.
+
+=over 4
+
+=item C<name>
+
+The message's short name.
+
+=item C<full_name>
+
+The message's fully-qualified, package-prefixed name.
+
+=item C<fields>
+
+An arrayref of the message's L<Proto3::Schema::Field> objects.
+
+=item C<oneofs>
+
+An arrayref of the message's L<Proto3::Schema::Oneof> objects.
+
+=item C<oneof_index>
+
+The index of the containing oneof when relevant; C<undef> otherwise.
+
+=item C<nested_messages>
+
+An arrayref of nested L<Proto3::Schema::Message> objects.
+
+=item C<nested_enums>
+
+An arrayref of nested L<Proto3::Schema::Enum> objects.
+
+=item C<reserved_numbers>
+
+An arrayref of reserved field-number C<[lo, hi]> ranges.
+
+=item C<reserved_names>
+
+An arrayref of reserved field names.
+
+=item C<options>
+
+A hashref of message-level options.
+
+=item C<is_map_entry>
+
+True when this message is a synthetic C<map<K,V>> entry type.
+
+=back
+
 =head1 LICENSE
 
 This software is licensed under the MIT license. See the C<LICENSE> file.

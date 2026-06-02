@@ -75,6 +75,72 @@ Models one C<FieldDescriptorProto>: its name, number, proto3 type, label, and
 optional map/oneof/packing metadata. All fields are immutable after
 construction except C<type_ref>, which the resolver populates post-load.
 
+=head1 ACCESSORS
+
+Each returns the correspondingly-named construction value.
+
+=over 4
+
+=item C<name>
+
+The field's proto name.
+
+=item C<number>
+
+The field's wire tag number.
+
+=item C<type>
+
+The proto3 type string (e.g. C<'int32'>, C<'message'>, C<'enum'>).
+
+=item C<label>
+
+One of C<'singular'>, C<'repeated'>, or C<'optional'>.
+
+=item C<type_name>
+
+The raw, unresolved dotted type name (e.g. C<'.foo.Bar'>) for message/enum
+fields; C<undef> for scalars.
+
+=item C<json_name>
+
+The field's JSON name, or C<undef> to derive it from C<name>.
+
+=item C<packed>
+
+The explicit C<packed> option value, or C<undef> when unspecified.
+
+=item C<map_entry>
+
+The map-entry message for a C<map<K,V>> field; C<undef> otherwise.
+
+=item C<oneof_index>
+
+The index of the containing oneof, or C<undef> when the field is not in a
+oneof.
+
+=item C<type_ref>
+
+The resolved L<Proto3::Schema::Message> / L<Proto3::Schema::Enum> the field
+references, populated by the resolver; C<undef> before resolution.
+
+=item C<options>
+
+A hashref of the field's options.
+
+=back
+
+=head1 METHODS
+
+=over 4
+
+=item C<set_type_ref($ref)>
+
+The one post-construction mutation a field allows: the resolver calls this to
+link the resolved type. Returns C<$self>.
+
+=back
+
 =head1 PREDICATES
 
 =over 4

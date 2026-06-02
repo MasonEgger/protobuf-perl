@@ -33,6 +33,30 @@ C<< { name, input_type, output_type, client_streaming, server_streaming } >>,
 where the streaming flags are booleans driven by the C<stream> keyword on the
 request/response types. Parse-only — this library does not dispatch RPCs.
 
+=head1 ACCESSORS
+
+Each returns the correspondingly-named construction value.
+
+=over 4
+
+=item C<name>
+
+The service's short name.
+
+=item C<full_name>
+
+The service's fully-qualified, package-prefixed name.
+
+=item C<methods>
+
+An arrayref of RPC-method hashrefs (see L</DESCRIPTION>).
+
+=item C<options>
+
+A hashref of service-level options.
+
+=back
+
 =head1 LICENSE
 
 This software is licensed under the MIT license. See the C<LICENSE> file.

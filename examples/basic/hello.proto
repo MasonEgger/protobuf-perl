@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package hello;
+
+// A minimal greeting message used by examples/basic/hello.pl to demonstrate
+// the parse -> resolve -> encode -> decode -> JSON pipeline.
+message Greeting {
+  string text = 1;
+  int32  priority = 2;
+  repeated string recipients = 3;
+}

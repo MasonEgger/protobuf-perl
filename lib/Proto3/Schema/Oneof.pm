@@ -29,6 +29,26 @@ Models a oneof: a named set of mutually-exclusive member fields. The members
 are C<Proto3::Schema::Field> instances that also appear in the owning message's
 field list, each carrying the matching C<oneof_index>.
 
+=head1 ACCESSORS
+
+Each returns the correspondingly-named construction value.
+
+=over 4
+
+=item C<name>
+
+The oneof's name.
+
+=item C<fields>
+
+An arrayref of the oneof's member L<Proto3::Schema::Field> objects.
+
+=item C<oneof_index>
+
+The oneof's index within its owning message.
+
+=back
+
 =head1 LICENSE
 
 This software is licensed under the MIT license. See the C<LICENSE> file.

@@ -434,6 +434,22 @@ package's symbol table as closures. This avoids both string C<eval> and
 C<feature 'class'> for the generated code, sidestepping the package-scoping
 traps that affect generated class blocks under this Perl.
 
+=head1 METHODS
+
+=head2 build
+
+    Proto3::Class::Generator->build(
+        schema         => $schema,
+        message        => $message,
+        target_package => 'My::Class',
+    );
+
+Installs a Perl class named C<target_package> from a resolved
+L<Proto3::Schema::Message> (C<message>) belonging to C<schema>. Returns nothing;
+its effect is the newly-populated package symbol table. All three arguments are
+required; a missing one raises L<Proto3::Exception::Argument>. The generated
+class exposes the API documented under L</GENERATED CLASS API>.
+
 =head1 GENERATED CLASS API
 
 =over 4

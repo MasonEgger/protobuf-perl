@@ -162,6 +162,51 @@ code, only an C<:isa> relationship.
 
 =back
 
+=head1 METHODS
+
+=over 4
+
+=item C<throw>
+
+Die with an exception object. As an instance method (C<< $exc->throw >>) it dies
+with the existing object; as a class method
+(C<< SomeClass->throw(message => '...') >>) it constructs an instance first.
+
+=item C<message>
+
+The human-readable error description (also the stringified form).
+
+=item C<cause>
+
+The optional wrapped underlying error, or C<undef>.
+
+=item C<name>
+
+I<(C<Proto3::Exception::Schema::UnresolvedType> only.)> The dangling type
+reference that could not be resolved.
+
+=item C<current_package>
+
+I<(C<UnresolvedType> only.)> The package the unresolved reference was written
+in.
+
+=item C<search_path>
+
+I<(C<UnresolvedType> only.)> An arrayref of the fully-qualified names the
+resolver tried, in order.
+
+=item C<line>
+
+I<(C<Proto3::Exception::Parser> and subclasses only.)> The 1-based source line
+where the parse error was detected.
+
+=item C<column>
+
+I<(C<Proto3::Exception::Parser> and subclasses only.)> The 1-based source column
+where the parse error was detected.
+
+=back
+
 =head1 HIERARCHY
 
     Proto3::Exception                          base; stringifies to message
