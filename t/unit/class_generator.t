@@ -10,6 +10,7 @@ use Proto3::Schema;
 use Proto3::Schema::File;
 use Proto3::Schema::Message;
 use Proto3::Schema::Field;
+use Proto3::Schema::Oneof;
 use Proto3::Class::Generator;
 use Proto3::Class::Accessor;
 
@@ -214,6 +215,210 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
     my $obj = $target->new;
     is( $obj->descriptor, $message,
         'descriptor (instance method) returns the Schema::Message' );
+}
+
+# --- T-class-4: repeated field — getter arrayref; add_ appends; set_ replaces -
+
+{
+    my ( $schema, $message ) = schema_with_fields(
+        {
+            name   => 'scores',
+            number => 1,
+            type   => 'int32',
+            label  => 'repeated',
+        },
+    );
+    my $target = next_pkg();
+    Proto3::Class::Generator->build(
+        schema         => $schema,
+        message        => $message,
+        target_package => $target,
+    );
+
+    my $obj = $target->new;
+    is_deeply( $obj->scores, [],
+        'T-class-4: repeated getter returns empty arrayref when unset' );
+
+    can_ok( $obj, 'add_scores' );
+    my $ret = $obj->add_scores(1);
+    is( $ret, $obj, 'add_<name> returns $self (chainable)' );
+    $obj->add_scores(2)->add_scores(3);
+    is_deeply( $obj->scores, [ 1, 2, 3 ],
+        'T-class-4: add_<name> appends in order' );
+
+    my $set_ret = $obj->set_scores( [ 7, 8 ] );
+    is( $set_ret, $obj, 'set_<name> returns $self (chainable)' );
+    is_deeply( $obj->scores, [ 7, 8 ],
+        'T-class-4: set_<name> replaces the whole list' );
+
+    is_deeply(
+        $obj->to_hashref,
+        { scores => [ 7, 8 ] },
+        'repeated value round-trips through to_hashref',
+    );
+}
+
+# --- T-class-5: map field — getter hashref; set_<n>_entry updates one key -----
+
+{
+    # A map field points at a synthetic MapEntry message (key=1, value=2) and is
+    # flagged via map_entry + label 'repeated'.
+    my $entry = Proto3::Schema::Message->new(
+        name         => 'AttrsEntry',
+        full_name    => 'pkg.M.AttrsEntry',
+        is_map_entry => 1,
+        fields       => [
+            Proto3::Schema::Field->new(
+                name => 'key', number => 1, type => 'string' ),
+            Proto3::Schema::Field->new(
+                name => 'value', number => 2, type => 'int32' ),
+        ],
+    );
+
+    my $map_field = Proto3::Schema::Field->new(
+        name      => 'attrs',
+        number    => 1,
+        type      => 'message',
+        label     => 'repeated',
+        map_entry => $entry,
+    );
+
+    my $message = Proto3::Schema::Message->new(
+        name      => 'M',
+        full_name => 'pkg.M',
+        fields    => [$map_field],
+    );
+    my $file = Proto3::Schema::File->new(
+        name     => 'm.proto',
+        package  => 'pkg',
+        messages => [$message],
+    );
+    my $schema = Proto3::Schema->new;
+    $schema->add_file($file);
+
+    my $target = next_pkg();
+    Proto3::Class::Generator->build(
+        schema         => $schema,
+        message        => $message,
+        target_package => $target,
+    );
+
+    my $obj = $target->new;
+    is_deeply( $obj->attrs, {},
+        'T-class-5: map getter returns empty hashref when unset' );
+
+    can_ok( $obj, 'set_attrs_entry' );
+    my $ret = $obj->set_attrs_entry( 'a', 1 );
+    is( $ret, $obj, 'set_<n>_entry returns $self (chainable)' );
+    $obj->set_attrs_entry( 'b', 2 );
+    is_deeply( $obj->attrs, { a => 1, b => 2 },
+        'T-class-5: set_<n>_entry adds keys' );
+
+    $obj->set_attrs_entry( 'a', 99 );
+    is_deeply( $obj->attrs, { a => 99, b => 2 },
+        'T-class-5: set_<n>_entry overwrites one key' );
+
+    $obj->set_attrs( { x => 5 } );
+    is_deeply( $obj->attrs, { x => 5 },
+        'map set_<name> replaces the whole map' );
+}
+
+# --- T-class-3: oneof — setting one member clears siblings; which_<oneof> -----
+
+{
+    my $oneof = Proto3::Schema::Oneof->new(
+        name        => 'kind',
+        oneof_index => 0,
+    );
+
+    my @fields = (
+        Proto3::Schema::Field->new(
+            name => 'text', number => 1, type => 'string', oneof_index => 0 ),
+        Proto3::Schema::Field->new(
+            name => 'number', number => 2, type => 'int32', oneof_index => 0 ),
+        Proto3::Schema::Field->new(
+            name => 'tag', number => 3, type => 'string' ),
+    );
+
+    my $message = Proto3::Schema::Message->new(
+        name      => 'M',
+        full_name => 'pkg.M',
+        fields    => \@fields,
+        oneofs    => [$oneof],
+    );
+    my $file = Proto3::Schema::File->new(
+        name     => 'm.proto',
+        package  => 'pkg',
+        messages => [$message],
+    );
+    my $schema = Proto3::Schema->new;
+    $schema->add_file($file);
+
+    my $target = next_pkg();
+    Proto3::Class::Generator->build(
+        schema         => $schema,
+        message        => $message,
+        target_package => $target,
+    );
+
+    my $obj = $target->new;
+    can_ok( $obj, 'which_kind' );
+    is( $obj->which_kind, undef,
+        'T-class-3: which_<oneof> is undef when no member set' );
+
+    $obj->set_text('hello');
+    is( $obj->which_kind, 'text', 'which_kind reports the set member' );
+    is( $obj->text,       'hello', 'oneof member value stored' );
+
+    $obj->set_number(42);
+    is( $obj->which_kind, 'number',
+        'T-class-3: setting another member switches which_kind' );
+    is( $obj->number, 42,    'new oneof member value stored' );
+    is( $obj->text,   undef, 'T-class-3: setting one member clears its sibling' );
+
+    # Non-oneof field is unaffected by oneof switching.
+    $obj->set_tag('t')->set_text('again');
+    is( $obj->tag, 't',
+        'non-oneof field survives oneof member changes' );
+    is( $obj->number, undef, 'switching back clears the other member' );
+}
+
+# --- T-class-6: has_<n> only for explicit-presence; clear resets -------------
+
+{
+    my ( $schema, $message ) = schema_with_fields(
+        {
+            name   => 'maybe',
+            number => 1,
+            type   => 'int32',
+            label  => 'optional',     # explicit presence
+        },
+        {
+            name   => 'always',
+            number => 2,
+            type   => 'int32',          # implicit presence (singular)
+        },
+    );
+    my $target = next_pkg();
+    Proto3::Class::Generator->build(
+        schema         => $schema,
+        message        => $message,
+        target_package => $target,
+    );
+
+    my $obj = $target->new;
+    can_ok( $obj, 'has_maybe' );
+    ok( !$target->can('has_always'),
+        'T-class-6: has_<n> NOT generated for implicit-presence field' );
+
+    ok( !$obj->has_maybe, 'has_<n> false before set' );
+    $obj->set_maybe(0);
+    ok( $obj->has_maybe,
+        'T-class-6: has_<n> true after set, even for zero value' );
+
+    $obj->clear_maybe;
+    ok( !$obj->has_maybe, 'T-class-6: clear_<n> resets presence' );
+    is( $obj->maybe, undef, 'cleared field reads undef' );
 }
 
 done_testing;

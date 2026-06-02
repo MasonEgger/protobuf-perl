@@ -296,14 +296,14 @@ work completes. Each step ends by running `just check`.
 - [x] 23.11 Verify: `just check`
 
 ### Step 24: Class generator — repeated/map/oneof/presence
-- [ ] 24.1 RED: repeated getter arrayref; add_ appends; set_ replaces (T-class-4)
-- [ ] 24.2 RED: map getter hashref; set_<n>_entry updates key (T-class-5)
-- [ ] 24.3 RED: oneof set clears siblings; which_<oneof> (T-class-3)
-- [ ] 24.4 RED: has_<n> only explicit-presence; clear_<n> resets (T-class-6)
-- [ ] 24.5 GREEN: add_/set_entry/which_/has_/clear_ helper emission
-- [ ] 24.6 REFACTOR: table-driven per-kind helpers
-- [ ] 24.7 Document POD
-- [ ] 24.8 Verify: `just check`
+- [x] 24.1 RED: repeated getter arrayref; add_ appends; set_ replaces (T-class-4)
+- [x] 24.2 RED: map getter hashref; set_<n>_entry updates key (T-class-5)
+- [x] 24.3 RED: oneof set clears siblings; which_<oneof> (T-class-3)
+- [x] 24.4 RED: has_<n> only explicit-presence; clear_<n> resets (T-class-6)
+- [x] 24.5 GREEN: add_/set_entry/which_/has_/clear_ helper emission
+- [x] 24.6 REFACTOR: table-driven per-kind helpers
+- [x] 24.7 Document POD
+- [x] 24.8 Verify: `just check`
 
 ### Step 25: Class generator — encode/decode integration
 - [ ] 25.1 RED: instance encode == codec encode of to_hashref

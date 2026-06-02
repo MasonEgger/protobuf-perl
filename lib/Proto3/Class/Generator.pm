@@ -90,31 +90,84 @@ sub build {
         return { %$self };
     };
 
+    # Map each oneof's index to the proto field names of its members, so a
+    # member setter can clear its siblings and which_<oneof> can report the set
+    # one. A field belongs to a oneof iff its oneof_index matches a oneof.
+    my %oneof_members;    # oneof_index => [ field name, ... ]
+    for my $oneof ( @{ $message->oneofs } ) {
+        my @names = map { $_->name } @{ $oneof->fields };
+        # Fall back to the message's fields carrying this oneof_index when the
+        # oneof was constructed without an explicit members list.
+        unless (@names) {
+            @names = map { $_->name }
+                grep { defined $_->oneof_index
+                    && $_->oneof_index == $oneof->oneof_index } @fields;
+        }
+        $oneof_members{ $oneof->oneof_index } = \@names;
+    }
+
     for my $field (@fields) {
-        _install_field_accessors( $target, $field );
+        my $siblings;
+        if ( defined $field->oneof_index
+            && $oneof_members{ $field->oneof_index } )
+        {
+            # Siblings = oneof members other than this field.
+            $siblings = [ grep { $_ ne $field->name }
+                    @{ $oneof_members{ $field->oneof_index } } ];
+        }
+        _install_field_accessors( $target, $field, $siblings );
+    }
+
+    # which_<oneof>($self) -> the proto field name of the set member, or undef.
+    for my $oneof ( @{ $message->oneofs } ) {
+        _install_which( $target, $oneof->name,
+            $oneof_members{ $oneof->oneof_index } );
     }
 
     return $target;
 }
 
-# Install the reader/set/clear accessors for one field into $target's symbol
-# table. The stored hash key is always the proto field name; the accessor base
-# name may carry a trailing underscore on a Perl-keyword clash.
-sub _install_field_accessors ($target, $field) {
+# Per-field-kind helper emission is table-driven: _field_kind classifies a
+# field, and %KIND_INSTALLERS maps the kind to the routine that installs that
+# kind's extra helpers (add_/set_entry/etc.) on top of the common reader/
+# set/clear. has_<name> is layered on independently for explicit-presence
+# fields, and oneof sibling-clearing is layered onto the setter via $siblings.
+
+# Classify a field for helper dispatch. Map is checked before repeated because
+# a map field is also labeled 'repeated' at the schema level.
+sub _field_kind ($field) {
+    return 'map'      if $field->is_map;
+    return 'repeated' if $field->is_repeated;
+    return 'singular';
+}
+
+# Install the accessors for one field into $target's symbol table. The stored
+# hash key is always the proto field name; the accessor base name may carry a
+# trailing underscore on a Perl-keyword clash. $siblings (arrayref or undef) is
+# the list of oneof sibling field names this setter must clear when it fires.
+sub _install_field_accessors ($target, $field, $siblings = undef) {
     my $name = $field->name;
     my $base = Proto3::Class::Accessor::accessor_name($name);
+    my $kind = _field_kind($field);
 
     no strict 'refs';    ## no critic (ProhibitNoStrict)
 
-    *{"${target}::${base}"} = sub {
-        my ($self) = @_;
-        return $self->{$name};
-    };
+    state %KIND_READER = (
+        singular => sub ($self, $n) { return $self->{$n}; },
+        repeated => sub ($self, $n) { return $self->{$n} //= []; },
+        map      => sub ($self, $n) { return $self->{$n} //= {}; },
+    );
+    my $reader = $KIND_READER{$kind};
+    *{"${target}::${base}"} = sub { return $reader->( $_[0], $name ); };
 
+    # set_<name>: replaces the whole value. Scalar singular fields type-check;
+    # repeated/map values are stored verbatim (element validation is the
+    # element-helper's job). Clears oneof siblings, then returns $self.
     *{"${target}::set_${base}"} = sub {
         my ( $self, $value ) = @_;
-        _assert_scalar_type( $field, $value );
+        _assert_scalar_type( $field, $value ) if $kind eq 'singular';
         $self->{$name} = $value;
+        _clear_siblings( $self, $siblings );
         return $self;    # chainable
     };
 
@@ -124,6 +177,72 @@ sub _install_field_accessors ($target, $field) {
         return $self;    # chainable
     };
 
+    # Kind-specific extra helpers (add_<name>, set_<name>_entry).
+    state %KIND_INSTALLERS = (
+        repeated => \&_install_repeated_helpers,
+        map      => \&_install_map_helpers,
+    );
+    if ( my $installer = $KIND_INSTALLERS{$kind} ) {
+        $installer->( $target, $field, $base, $name, $siblings );
+    }
+
+    # has_<name>: only for explicit-presence (optional-labeled) fields.
+    if ( $field->label eq 'optional' ) {
+        *{"${target}::has_${base}"} = sub {
+            my ($self) = @_;
+            return exists $self->{$name} ? 1 : 0;
+        };
+    }
+
+    return;
+}
+
+# add_<name>($element): append to the repeated field's arrayref (autovivified).
+sub _install_repeated_helpers ($target, $field, $base, $name, $siblings) {
+    no strict 'refs';    ## no critic (ProhibitNoStrict)
+    *{"${target}::add_${base}"} = sub {
+        my ( $self, $element ) = @_;
+        push @{ $self->{$name} //= [] }, $element;
+        _clear_siblings( $self, $siblings );
+        return $self;    # chainable
+    };
+    return;
+}
+
+# set_<name>_entry($key, $value): set one key of the map field's hashref
+# (autovivified), overwriting any existing value for that key.
+sub _install_map_helpers ($target, $field, $base, $name, $siblings) {
+    no strict 'refs';    ## no critic (ProhibitNoStrict)
+    *{"${target}::set_${base}_entry"} = sub {
+        my ( $self, $key, $value ) = @_;
+        ( $self->{$name} //= {} )->{$key} = $value;
+        _clear_siblings( $self, $siblings );
+        return $self;    # chainable
+    };
+    return;
+}
+
+# which_<oneof>($self): the proto field name of the currently-set oneof member,
+# or undef if none is set. "Set" means the hash key exists.
+sub _install_which ($target, $oneof_name, $members) {
+    my $base = Proto3::Class::Accessor::accessor_name($oneof_name);
+    $members //= [];
+    no strict 'refs';    ## no critic (ProhibitNoStrict)
+    *{"${target}::which_${base}"} = sub {
+        my ($self) = @_;
+        for my $member (@$members) {
+            return $member if exists $self->{$member};
+        }
+        return undef;
+    };
+    return;
+}
+
+# Delete every sibling field's value (used by oneof member setters to enforce
+# mutual exclusion). A no-op when $siblings is undef/empty.
+sub _clear_siblings ($self, $siblings) {
+    return unless $siblings;
+    delete $self->{$_} for @$siblings;
     return;
 }
 
@@ -215,6 +334,55 @@ returns C<$self> so setters chain.
 =item C<< $obj->clear_NAME >>
 
 Removes the field's value and returns C<$self>.
+
+=item C<< $obj->has_NAME >>
+
+Presence check, B<generated only for explicit-presence fields> (those declared
+C<optional> in proto3). Returns true once the field has been set — even to its
+zero value — and false after C<clear_NAME>. Implicit-presence (plain singular)
+fields get no C<has_> accessor.
+
+=back
+
+=head2 Repeated fields
+
+A repeated field's reader returns an arrayref (an empty one if unset). In
+addition to C<set_NAME> (which replaces the whole list) it gets:
+
+=over 4
+
+=item C<< $obj->add_NAME($element) >>
+
+Appends C<$element> to the list and returns C<$self>.
+
+=back
+
+=head2 Map fields
+
+A map field's reader returns a hashref (an empty one if unset). In addition to
+C<set_NAME> (which replaces the whole map) it gets:
+
+=over 4
+
+=item C<< $obj->set_NAME_entry($key, $value) >>
+
+Sets a single key, overwriting any existing value for that key, and returns
+C<$self>.
+
+=back
+
+=head2 Oneofs
+
+The members of a oneof are mutually exclusive: setting any member (via its
+C<set_>, C<add_>, or C<set_>I<entry> helper) clears every other member of the
+same oneof. Each oneof also gets:
+
+=over 4
+
+=item C<< $obj->which_ONEOF >>
+
+Returns the proto field name of the currently-set member, or C<undef> when no
+member is set.
 
 =item C<< $obj->to_hashref >>
 
