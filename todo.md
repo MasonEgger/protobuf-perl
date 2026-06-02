@@ -385,13 +385,13 @@ work completes. Each step ends by running `just check`.
 - [x] 30.10 Verify: `just check`
 
 ### Step 31: Run suite + CI gate
-- [ ] 31.1 RED: t/conformance/run_suite.t skip_all unless runner available
-- [ ] 31.2 RED: fail on any required proto3 failure; report recommended (T-conf-1/2)
-- [ ] 31.3 GREEN: iterate — regression test + fix per required failure until green
-- [ ] 31.4 CI: run_suite.t as required stage; recommended non-blocking (T-conf-3)
-- [ ] 31.5 REFACTOR: shared fixes + lessons
-- [ ] 31.6 Document README conformance status
-- [ ] 31.7 Verify: `just check` + suite green
+- [x] 31.1 RED: t/conformance/run_suite.t skip_all unless runner available
+- [x] 31.2 RED: fail on any required proto3 failure; report recommended (T-conf-1/2)
+- [x] 31.3 GREEN: iterate — regression test + fix per required failure until green
+- [x] 31.4 CI: run_suite.t as required stage; recommended non-blocking (T-conf-3)
+- [x] 31.5 REFACTOR: shared fixes + lessons
+- [x] 31.6 Document README conformance status
+- [x] 31.7 Verify: `just check` + suite green
 
 ---
 

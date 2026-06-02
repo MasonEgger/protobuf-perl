@@ -22,6 +22,33 @@ just test    # prove -lr t
 just lint    # perlcritic --gentle lib t
 ```
 
+## Conformance
+
+Passing the proto3 subset of [Google's Protocol Buffers Conformance Test
+Suite](https://github.com/protocolbuffers/protobuf/tree/main/conformance) is the
+credibility bar for this project (spec §4.11).
+
+- The testee binary is [`bin/proto3-conformance`](bin/proto3-conformance); all of
+  its request-handling logic lives in
+  [`Proto3::Conformance`](lib/Proto3/Conformance.pm).
+- The harness [`t/conformance/run_suite.t`](t/conformance/run_suite.t) unit-tests
+  the runner-output verdict logic on every run, and drives the real Google
+  `conformance_test_runner` against the testee **when one is available** (set the
+  `CONFORMANCE_TEST_RUNNER` environment variable, or put `conformance_test_runner`
+  on `PATH`). When no runner is present it skips, so `just test` stays green
+  without the external toolchain installed.
+- **CI** (the `conformance` job in
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml)) builds
+  `conformance_test_runner` from the protobuf source and runs the suite as a
+  **required** stage: any failing `Required.Proto3.*` test fails the build
+  (T-conf-1). Failing `Recommended.Proto3.*` tests are reported but
+  non-blocking (T-conf-2/3).
+
+> **Status: not yet certified locally.** The conformance runner is not installed
+> in the default dev environment, so the live suite has not been run here — only
+> the skip-aware harness and the CI wiring are in place. The required-proto3 bar
+> is enforced in CI.
+
 ## License
 
 MIT. See [`LICENSE`](LICENSE).

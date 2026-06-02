@@ -34,3 +34,44 @@ jobs:
 
       - name: Run checks
         run: just check
+
+  conformance:
+    name: conformance suite (proto3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Perl 5.38
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: '5.38'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake protobuf-compiler libprotoc-dev
+
+      - name: Install Perl deps
+        run: cpanm --notest --installdeps .
+
+      # Build Google's conformance_test_runner from the protobuf source. The
+      # built binary becomes the testee driver; CONFORMANCE_TEST_RUNNER points
+      # t/conformance/run_suite.t at it so the live stage actually runs (spec §6).
+      - name: Build conformance_test_runner
+        run: |
+          PROTOBUF_REF="v25.9"
+          git clone --depth 1 --branch "$PROTOBUF_REF" \
+            https://github.com/protocolbuffers/protobuf.git "$RUNNER_TEMP/protobuf"
+          cmake -S "$RUNNER_TEMP/protobuf" -B "$RUNNER_TEMP/protobuf/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dprotobuf_BUILD_CONFORMANCE=ON \
+            -Dprotobuf_BUILD_TESTS=OFF \
+            -Dprotobuf_ABSL_PROVIDER=module
+          cmake --build "$RUNNER_TEMP/protobuf/build" --target conformance_test_runner -j"$(nproc)"
+          echo "CONFORMANCE_TEST_RUNNER=$RUNNER_TEMP/protobuf/build/conformance/conformance_test_runner" >> "$GITHUB_ENV"
+
+      # Required stage: zero required proto3 failures fails the build (T-conf-1).
+      # The recommended-failure count is reported via the test's diag output and
+      # is non-blocking (T-conf-2/3).
+      - name: Run conformance suite
+        run: prove -lrv t/conformance/run_suite.t

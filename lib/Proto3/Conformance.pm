@@ -168,6 +168,84 @@ sub Proto3::Conformance::_serialize_payload {
     return { json_payload => $string };
 }
 
+# parse_runner_output($text) -> a hashref summarizing a conformance run.
+#
+# Google's conformance_test_runner writes per-failure lines and a final summary
+# line to stdout/stderr. We turn that text into a verdict the test harness (and
+# CI) act on (spec §4.11, T-conf-1/2):
+#
+#   {
+#     required_failures    => [ "Required.Proto3.<...>", ... ],  # MUST be empty
+#     recommended_failures => [ "Recommended.Proto3.<...>", ... ],# reported only
+#     summary              => "CONFORMANCE SUITE ...",            # final line
+#     parsed_summary       => bool,  # whether a summary line was found
+#   }
+#
+# A required proto3 failure is the bar: the harness FAILs if required_failures is
+# non-empty. Recommended failures are counted and reported but do not fail the
+# build (CI reports the count non-blocking, T-conf-3).
+#
+# Failure lines look like:  ERROR, test=Required.Proto3.ProtobufInput...: <msg>
+# The summary line looks like:
+#   CONFORMANCE SUITE PASSED: 1234 successes, 5 skipped, 6 expected failures, 0 unexpected failures.
+#   CONFORMANCE SUITE FAILED: ... N unexpected failures.
+sub Proto3::Conformance::parse_runner_output {
+    my ($text) = @_;
+    $text //= '';
+
+    my @required;
+    my @recommended;
+    my $summary;
+    my $parsed_summary = 0;
+
+    for my $line ( split /\n/, $text ) {
+        if ( $line =~ /^CONFORMANCE SUITE (?:PASSED|FAILED)\b/ ) {
+            $summary        = $line;
+            $parsed_summary = 1;
+            next;
+        }
+
+        # Per-test failure lines name the test; the conformance suite prefixes
+        # proto3 required tests with "Required.Proto3" and recommended ones with
+        # "Recommended.Proto3". Match the test name wherever it appears.
+        next unless $line =~ /\btest=(\S+?):/ or $line =~ /\b(Re(?:quired|commended)\.Proto3\.\S+)/;
+        my $test = $1;
+        # Strip a trailing colon left by the first alternation's capture.
+        $test =~ s/:$//;
+
+        if ( $test =~ /^Required\.Proto3\./ ) {
+            push @required, $test;
+        }
+        elsif ( $test =~ /^Recommended\.Proto3\./ ) {
+            push @recommended, $test;
+        }
+    }
+
+    return {
+        required_failures    => \@required,
+        recommended_failures => \@recommended,
+        summary              => $summary,
+        parsed_summary       => $parsed_summary,
+    };
+}
+
+# find_runner() -> the path to the conformance test runner, or undef.
+#
+# Looks at $ENV{CONFORMANCE_TEST_RUNNER} first (CI sets this to the built
+# binary), then searches PATH for `conformance_test_runner`. Returns undef when
+# no runner is available so callers can skip the live integration (this box has
+# no runner installed).
+sub Proto3::Conformance::find_runner {
+    my $explicit = $ENV{CONFORMANCE_TEST_RUNNER};
+    return $explicit if defined $explicit && length $explicit && -x $explicit;
+
+    for my $dir ( File::Spec->path ) {
+        my $candidate = File::Spec->catfile( $dir, 'conformance_test_runner' );
+        return $candidate if -x $candidate;
+    }
+    return undef;
+}
+
 # run_stdio($in_fh, $out_fh) -> number of requests served.
 #
 # The conformance runner protocol: each message is framed by a 4-byte
@@ -299,6 +377,43 @@ C<serialize_error> — the message parsed but could not be re-serialized to the
 requested format.
 
 =back
+
+=head2 parse_runner_output
+
+    my $verdict = Proto3::Conformance::parse_runner_output($runner_stdout);
+
+Parse the text Google's C<conformance_test_runner> writes into a verdict the test
+harness and CI act on (spec §4.11). Returns a hashref:
+
+=over 4
+
+=item *
+
+C<required_failures> — arrayref of C<Required.Proto3.*> test names that failed.
+The conformance bar (T-conf-1): this B<must> be empty.
+
+=item *
+
+C<recommended_failures> — arrayref of C<Recommended.Proto3.*> test names that
+failed. Reported and counted but non-blocking (T-conf-2/3).
+
+=item *
+
+C<summary> — the final C<CONFORMANCE SUITE PASSED/FAILED: ...> line, if present.
+
+=item *
+
+C<parsed_summary> — true when a summary line was found.
+
+=back
+
+=head2 find_runner
+
+    my $path = Proto3::Conformance::find_runner;
+
+Locate the conformance test runner: C<$ENV{CONFORMANCE_TEST_RUNNER}> if it points
+at an executable, else C<conformance_test_runner> on C<PATH>. Returns C<undef>
+when no runner is available, so the live integration test skips.
 
 =head2 run_stdio
 
