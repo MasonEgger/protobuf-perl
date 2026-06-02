@@ -181,15 +181,15 @@ work completes. Each step ends by running `just check`.
 - [x] 14.9 Verify: `just check`
 
 ### Step 15: Codec — unknown-field preservation + protoc differential
-- [ ] 15.1 RED: preserve_unknown_fields stores raw + re-emits byte-exact (T-codec-8b)
-- [ ] 15.2 RED: default drops unknown (assert absent)
-- [ ] 15.3 RED: t/codec/diff_protoc.t skip_all unless protoc
-- [ ] 15.4 RED: 20 messages encode-us/decode-protoc and reverse match (T-codec-11)
-- [ ] 15.5 GREEN: preserve_unknown_fields storage + re-emit
-- [ ] 15.6 GREEN: protoc harness helper in t/lib
-- [ ] 15.7 REFACTOR: reusable protoc harness module
-- [ ] 15.8 Document POD (preserve_unknown_fields)
-- [ ] 15.9 Verify: `just check`
+- [x] 15.1 RED: preserve_unknown_fields stores raw + re-emits byte-exact (T-codec-8b)
+- [x] 15.2 RED: default drops unknown (assert absent)
+- [x] 15.3 RED: t/codec/diff_protoc.t skip_all unless protoc
+- [x] 15.4 RED: 20 messages encode-us/decode-protoc and reverse match (T-codec-11)
+- [x] 15.5 GREEN: preserve_unknown_fields storage + re-emit
+- [x] 15.6 GREEN: protoc harness helper in t/lib
+- [x] 15.7 REFACTOR: reusable protoc harness module
+- [x] 15.8 Document POD (preserve_unknown_fields)
+- [x] 15.9 Verify: `just check`
 
 ---
 

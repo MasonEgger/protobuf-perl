@@ -1,14 +1,64 @@
 # ABOUTME: Proto3::Codec — high-level encode/decode over a resolved Schema; §4.5.
 # Singular scalars, packed/unpacked repeated, key-sorted maps, recursive nested
-# messages, enums-as-varint, and oneof (encode one member, decode last-wins).
+# messages, enums-as-varint, oneof, and opt-in unknown-field preservation.
 use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
 
 use Scalar::Util ();
+use Math::BigInt ();
 use Proto3::Exception;
 use Proto3::Wire ();
 use Proto3::Wire::Tag ();
+
+# 2**64 and 2**63 as Math::BigInt, used to convert negative int32/int64 values
+# to and from their proto3 two's-complement 64-bit varint representation. proto3
+# encodes a negative int32/int64 as the full 64-bit two's complement (always a
+# 10-byte varint), so a signed varint round-trips through the unsigned 64-bit
+# range. Pre-class lexicals (the feature 'class' package-scoping trap).
+my $TWO_64 = Math::BigInt->new(2)->bpow(64);
+my $TWO_63 = Math::BigInt->new(2)->bpow(63);
+
+# Signed int32/int64 helpers as anonymous coderefs in pre-class lexicals. They
+# live inside a `do {}` block on purpose: this Perl 5.38.2 build mis-parses a
+# file-scope `sub (signature)` that immediately precedes a `class` block
+# ("Subroutine attributes must come before the signature"); the `do {}` wrapper
+# insulates the signatures, the same trick %SCALAR_TYPE already relies on.
+my ( $normalize_int, $encode_signed_varint, $decode_signed_varint ) = do {
+
+    # Reduce a Math::BigInt to a native Perl integer when it fits the native
+    # signed 64-bit range, so decoded values compare cleanly against plain
+    # numbers; values outside that range stay Math::BigInt for exactness.
+    my $norm = sub ($big) {
+        return 0 if $big->is_zero;
+        return $big->numify if $big->copy->babs->blt($TWO_63);
+        return $big;
+    };
+
+    # Encode a signed int32/int64 as a proto3 varint. A non-negative value
+    # encodes as a plain varint; a negative value encodes as its 64-bit two's
+    # complement (2**64 + value), matching protoc (always 10 bytes).
+    my $enc = sub ($value) {
+        my $big = ( ref $value && $value->isa('Math::BigInt') )
+            ? $value->copy
+            : Math::BigInt->new("$value");
+        $big->badd($TWO_64) if $big->is_neg;
+        return Proto3::Wire::encode_varint($big);
+    };
+
+    # Decode a proto3 signed int32/int64 varint off the front of $bytes. Reads
+    # the unsigned 64-bit varint, then reinterprets a value with the high bit set
+    # as the corresponding negative two's-complement integer. Returns
+    # ($value, $rest).
+    my $dec = sub ($bytes) {
+        my ( $u, $rest ) = Proto3::Wire::decode_varint($bytes);
+        my $big = ref $u ? $u->copy : Math::BigInt->new("$u");
+        $big->bsub($TWO_64) if $big->bcmp($TWO_63) >= 0;    # high bit -> negative
+        return ( $norm->($big), $rest );
+    };
+
+    ( $norm, $enc, $dec );
+};
 
 # Scalar-type encoding table — the single source of truth for how each proto3
 # scalar wire-encodes. Held as a pre-class lexical so methods read it without
@@ -33,6 +83,9 @@ my %SCALAR_TYPE = do {
     my $W_I32    = Proto3::Wire::Tag::WIRE_I32();
 
     my $varint  = sub ($v) { Proto3::Wire::encode_varint($v) };
+    # int32/int64 use signed-varint semantics: negatives become the 64-bit
+    # two's complement, matching protoc. uint32/uint64/bool/enum stay unsigned.
+    my $signed  = sub ($v) { $encode_signed_varint->($v) };
     my $zigzag32 = sub ($v) { Proto3::Wire::encode_zigzag32($v) };
     my $zigzag64 = sub ($v) { Proto3::Wire::encode_zigzag64($v) };
     my $bool    = sub ($v) { Proto3::Wire::encode_varint( $v ? 1 : 0 ) };
@@ -47,9 +100,18 @@ my %SCALAR_TYPE = do {
     };
 
     # --- decoders (mirror the encoders; the table is the single dispatch) ---
+    # Every decoder returns ($value, $rest). decode_zigzag* yield only the value,
+    # so we read the varint separately to recover the unconsumed remainder.
     my $d_varint   = sub ($b) { Proto3::Wire::decode_varint($b) };
-    my $d_zigzag32 = sub ($b) { Proto3::Wire::decode_zigzag32($b) };
-    my $d_zigzag64 = sub ($b) { Proto3::Wire::decode_zigzag64($b) };
+    my $d_signed   = sub ($b) { $decode_signed_varint->($b) };
+    my $d_zigzag32 = sub ($b) {
+        my ( undef, $rest ) = Proto3::Wire::decode_varint($b);
+        return ( Proto3::Wire::decode_zigzag32($b), $rest );
+    };
+    my $d_zigzag64 = sub ($b) {
+        my ( undef, $rest ) = Proto3::Wire::decode_varint($b);
+        return ( Proto3::Wire::decode_zigzag64($b), $rest );
+    };
     # bool normalizes any non-zero varint to 1 and zero to 0.
     my $d_bool     = sub ($b) {
         my ( $v, $rest ) = Proto3::Wire::decode_varint($b);
@@ -72,8 +134,8 @@ my %SCALAR_TYPE = do {
     };
 
     (
-        int32    => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
-        int64    => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        int32    => { wire => $W_VARINT, encode => $signed,   decode => $d_signed,   is_num => 1, default => 0 },
+        int64    => { wire => $W_VARINT, encode => $signed,   decode => $d_signed,   is_num => 1, default => 0 },
         uint32   => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
         uint64   => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
         bool     => { wire => $W_VARINT, encode => $bool,     decode => $d_bool,     is_num => 1, default => 0 },
@@ -101,10 +163,24 @@ my %ALLOWED_MAP_KEY_TYPE = map { $_ => 1 } qw(
     bool string
 );
 
+# The result-hashref key under which decode stores the raw bytes of any unknown
+# fields when preserve_unknown_fields is on, and from which encode re-emits them
+# after the known fields. A pre-class lexical (the feature 'class' scoping trap).
+my $UNKNOWN_FIELDS_KEY = '__unknown_fields__';
+
 class Proto3::Codec {
     field $schema :param;
 
+    # When true, decode preserves the raw bytes of unrecognized fields under the
+    # result's __unknown_fields__ key, and encode re-emits them verbatim after
+    # the known fields, so an unknown-field-bearing message survives a
+    # decode/encode round-trip byte-for-byte (spec §4.5, §5.3). Default off: an
+    # unknown field is skipped on decode and never resurrected on encode.
+    field $preserve_unknown_fields :param = 0;
+
     method schema { $schema }
+
+    method preserve_unknown_fields { $preserve_unknown_fields }
 
     # Validate every map field's key type at construction (spec §4.5): a map key
     # must be an integral type, bool, or string. A disallowed key (float/double/
@@ -146,6 +222,11 @@ class Proto3::Codec {
     # repeated and map fields, and recursively-encoded singular messages. Fields
     # declared `optional` and oneof members use explicit-presence semantics: a
     # set value is always emitted, even at the type default.
+    #
+    # When preserve_unknown_fields is on and the value carries preserved unknown
+    # bytes under __unknown_fields__ (typically from a prior decode), those bytes
+    # are appended verbatim after the known fields, so a decode/encode round-trip
+    # reproduces an unknown-field-bearing message byte-for-byte.
     method encode ($full_name, $values) {
         my $message = $schema->message($full_name);
         if ( !defined $message ) {
@@ -161,6 +242,13 @@ class Proto3::Codec {
         for my $field (@fields) {
             $out .= $self->_encode_field( $field, $values );
         }
+
+        if ( $preserve_unknown_fields
+            && defined $values->{$UNKNOWN_FIELDS_KEY} )
+        {
+            $out .= $values->{$UNKNOWN_FIELDS_KEY};
+        }
+
         return $out;
     }
 
@@ -417,16 +505,27 @@ class Proto3::Codec {
         }
 
         my %result;
+        my $unknown = '';    # accumulated raw bytes of unknown fields, in order
         my $rest = $bytes;
         while ( length $rest ) {
+            # Remember the record start (tag included) so an unknown field's full
+            # tag+payload bytes can be captured verbatim for preservation.
+            my $record_start = $rest;
+
             ( my $field_number, my $wire_type, $rest ) =
                 Proto3::Wire::Tag::decode_tag($rest);
 
             my $field = $field_by_number{$field_number};
 
-            # Unknown field number: drain it by wire type and drop it.
+            # Unknown field number: drain it by wire type. With preservation on,
+            # capture the whole record (tag + payload) verbatim; otherwise drop.
             if ( !$field ) {
-                $rest = Proto3::Wire::skip_field( $wire_type, $rest );
+                my $after = Proto3::Wire::skip_field( $wire_type, $rest );
+                if ($preserve_unknown_fields) {
+                    my $consumed = length($record_start) - length($after);
+                    $unknown .= substr( $record_start, 0, $consumed );
+                }
+                $rest = $after;
                 next;
             }
 
@@ -471,6 +570,11 @@ class Proto3::Codec {
         }
 
         $self->_apply_defaults( $message, \%result );
+
+        # Surface preserved unknown bytes only when there are any, so a message
+        # with no unknown fields keeps the marker key absent.
+        $result{$UNKNOWN_FIELDS_KEY} = $unknown if length $unknown;
+
         return \%result;
     }
 
@@ -652,10 +756,18 @@ deep message trees round-trip.
 =head2 new
 
     my $codec = Proto3::Codec->new( schema => $schema );
+    my $codec = Proto3::Codec->new(
+        schema                  => $schema,
+        preserve_unknown_fields => 1,
+    );
 
 Construct a codec bound to a L<Proto3::Schema>. The schema should already be
 resolved (see L<Proto3::Schema/resolve>) for message-typed fields, though that
 matters only once those are encoded.
+
+The optional C<preserve_unknown_fields> flag (default off) turns on
+unknown-field retention across a decode/encode round-trip; see
+L</UNKNOWN-FIELD PRESERVATION>.
 
 At construction every map field's B<key type> is validated: a map key must be
 an integral type, C<bool>, or C<string>. A schema containing a map with a
@@ -753,10 +865,11 @@ member appears on the wire.
 
 =item *
 
-B<Unknown fields.> A tag whose field number is not declared by the message (or
-whose field is not yet handled this step) is skipped according to its wire type
-(varint drained, length-delimited skips its byte count, I32/I64 skip their fixed
-width) and is B<absent> from the returned hashref.
+B<Unknown fields.> A tag whose field number is not declared by the message is
+skipped according to its wire type (varint drained, length-delimited skips its
+byte count, I32/I64 skip their fixed width). By default it is B<absent> from the
+returned hashref; with C<preserve_unknown_fields> its raw bytes are retained (see
+L</UNKNOWN-FIELD PRESERVATION>).
 
 =item *
 
@@ -816,6 +929,43 @@ L<Proto3::Exception::Wire::Truncated>, both surfaced unchanged from the wire
 layer.
 
 =back
+
+=head1 UNKNOWN-FIELD PRESERVATION
+
+By default an unknown field (a tag whose number the message does not declare) is
+dropped on decode and never reappears on encode. Constructing the codec with
+C<< preserve_unknown_fields => 1 >> changes that:
+
+=over 4
+
+=item *
+
+B<On decode>, the raw bytes of every unknown record (tag plus payload) are
+concatenated in wire order and stored under the result hashref's
+C<__unknown_fields__> key. A message with no unknown fields leaves that key
+B<absent> (there is no empty marker).
+
+=item *
+
+B<On encode>, if the value hashref carries a C<__unknown_fields__> string, those
+bytes are appended B<verbatim, after> all known fields. A decode immediately
+followed by an encode therefore reproduces an unknown-field-bearing message
+B<byte-for-byte> after its known fields (spec §4.5, §5.3).
+
+=back
+
+With the flag off, C<__unknown_fields__> is never produced on decode and is
+ignored on encode (it is not a declared field), so it cannot resurrect dropped
+bytes.
+
+=head1 SIGNED INTEGER ENCODING
+
+The C<int32> and C<int64> types use proto3 signed-varint semantics: a
+non-negative value is a plain varint, while a B<negative> value is encoded as
+its full 64-bit two's complement (C<2**64 + value>), which always occupies ten
+bytes — matching C<protoc>. Decoding reverses this: an unsigned varint with the
+high (63rd) bit set is reinterpreted as the corresponding negative integer. Use
+C<sint32>/C<sint64> (zigzag) when small-magnitude negatives should stay compact.
 
 =head1 FAILURE MODES
 
