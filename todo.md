@@ -398,15 +398,15 @@ work completes. Each step ends by running `just check`.
 ## Phase 7 — AOT codegen
 
 ### Step 32: proto3-gen-perl
-- [ ] 32.1 RED: generate trivial .proto -> loads + round-trips (T-gen-1)
-- [ ] 32.2 RED: package mapping temporal.api.common.v1 -> T::Api::Common::V1
-- [ ] 32.3 RED: regeneration byte-identical (T-gen-3)
-- [ ] 32.4 RED: generated classes pass shared round-trip (T-gen-2 shape)
-- [ ] 32.5 RED: generated module does not use Proto3::Parser
-- [ ] 32.6 GREEN: bin/proto3-gen-perl (parse_with_imports + render per file)
-- [ ] 32.7 REFACTOR: shared accessor/method spec with Class::Generator
-- [ ] 32.8 Document POD + bin usage + README
-- [ ] 32.9 Verify: `just check`
+- [x] 32.1 RED: generate trivial .proto -> loads + round-trips (T-gen-1)
+- [x] 32.2 RED: package mapping temporal.api.common.v1 -> T::Api::Common::V1
+- [x] 32.3 RED: regeneration byte-identical (T-gen-3)
+- [x] 32.4 RED: generated classes pass shared round-trip (T-gen-2 shape)
+- [x] 32.5 RED: generated module does not use Proto3::Parser
+- [x] 32.6 GREEN: bin/proto3-gen-perl (parse_with_imports + render per file)
+- [x] 32.7 REFACTOR: shared accessor/method spec with Class::Generator
+- [x] 32.8 Document POD + bin usage + README
+- [x] 32.9 Verify: `just check`
 
 ---
 

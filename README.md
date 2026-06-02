@@ -22,6 +22,34 @@ just test    # prove -lr t
 just lint    # perlcritic --gentle lib t
 ```
 
+## Ahead-of-time code generation
+
+[`bin/proto3-gen-perl`](bin/proto3-gen-perl) reads `.proto` files and emits one
+Perl `.pm` per file — compiled, statically-discoverable message classes for
+projects that want faster startup, IDE autocompletion, and no runtime
+parse-failure surprises (spec §4.12).
+
+```sh
+proto3-gen-perl \
+    --include /path/to/protos \
+    --output  /path/to/lib \
+    --package-prefix T::Api \
+    temporal/api/common/v1/message.proto
+# Writes /path/to/lib/T/Api/Common/V1/Message.pm
+```
+
+Protobuf packages map to Perl namespaces via `--package-prefix`: each protobuf
+path component is PascalCased and the prefix replaces the leading components, so
+`temporal.api.common.v1` under `--package-prefix T::Api` becomes
+`T::Api::Common::V1`.
+
+The emitted classes share the exact runtime build path of
+[`Proto3::Class::Generator`](lib/Proto3/Class/Generator.pm) — there is only one
+accessor/codec contract, so AOT and runtime classes cannot drift. Generated
+modules carry **no** parser or descriptor-set dependency (only the schema, codec,
+and WKT layers), and the output is **deterministic**: regenerating an unchanged
+`.proto` is byte-identical.
+
 ## Conformance
 
 Passing the proto3 subset of [Google's Protocol Buffers Conformance Test
