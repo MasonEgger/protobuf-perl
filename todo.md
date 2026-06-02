@@ -343,17 +343,17 @@ work completes. Each step ends by running `just check`.
 - [x] 27.9 Verify: `just check`
 
 ### Step 28: JSON encode (Proto3::JSON)
-- [ ] 28.1 RED: all scalar types serialize
-- [ ] 28.2 RED: int64/uint64/fixed64 emit as strings (T-json-2 enc)
-- [ ] 28.3 RED: enum as name default; enums_as_ints (T-json-3 enc)
-- [ ] 28.4 RED: camelCase default; preserve_field_names (T-json-4)
-- [ ] 28.5 RED: bytes base64
-- [ ] 28.6 RED: default-omit; emit_defaults (T-json-5)
-- [ ] 28.7 RED: WKT special forms delegated (T-json-6 enc); maps as objects
-- [ ] 28.8 GREEN: lib/Proto3/JSON.pm + Codec::encode_json
-- [ ] 28.9 REFACTOR: scalar->JSON-rep table
-- [ ] 28.10 Document POD (encode rules)
-- [ ] 28.11 Verify: `just check`
+- [x] 28.1 RED: all scalar types serialize
+- [x] 28.2 RED: int64/uint64/fixed64 emit as strings (T-json-2 enc)
+- [x] 28.3 RED: enum as name default; enums_as_ints (T-json-3 enc)
+- [x] 28.4 RED: camelCase default; preserve_field_names (T-json-4)
+- [x] 28.5 RED: bytes base64
+- [x] 28.6 RED: default-omit; emit_defaults (T-json-5)
+- [x] 28.7 RED: WKT special forms delegated (T-json-6 enc); maps as objects
+- [x] 28.8 GREEN: lib/Proto3/JSON.pm + Codec::encode_json
+- [x] 28.9 REFACTOR: scalar->JSON-rep table
+- [x] 28.10 Document POD (encode rules)
+- [x] 28.11 Verify: `just check`
 
 ### Step 29: JSON decode + protoc differential
 - [ ] 29.1 RED: all scalar round-trip (T-json-1)

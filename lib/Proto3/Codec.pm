@@ -474,6 +474,18 @@ class Proto3::Codec {
         );
     }
 
+    # encode_json($full_name, $values, %opts) -> a canonical proto3 JSON string.
+    #
+    # Thin adapter: build a Proto3::JSON bound to this codec and its schema, then
+    # delegate. The codec is handed across so well-known-type Any delegation can
+    # re-encode its inner message. Options (enums_as_ints, preserve_field_names,
+    # emit_defaults) are forwarded unchanged; see Proto3::JSON for their meaning.
+    method encode_json ($full_name, $values, %opts) {
+        require Proto3::JSON;
+        my $json = Proto3::JSON->new( codec => $self, schema => $schema );
+        return $json->encode( $full_name, $values, %opts );
+    }
+
     # decode($full_name, $bytes) -> hashref of field name => value.
     #
     # Looks up the message by fully-qualified name (UnknownType if absent), then
