@@ -9,6 +9,7 @@ use File::Spec;
 use Cwd ();
 
 use Proto3::Parser::Grammar;
+use Proto3::Schema;
 use Proto3::Exception;
 
 class Proto3::Parser {
@@ -47,6 +48,42 @@ class Proto3::Parser {
         my $file = $self->parse_string( $rel, $source );
         $cache->{$abs} = $file;
         return $file;
+    }
+
+    # Parse $rel and every file it transitively imports, returning a
+    # Proto3::Schema with all of them added. Imports are followed via parse_file,
+    # so the abs-path cache deduplicates diamond imports (each file loads once).
+    # A circular import chain raises Proto3::Exception::Parser::ImportCycle.
+    method parse_with_imports ($rel) {
+        my $schema = Proto3::Schema->new;
+        $self->_collect_imports( $rel, $schema, {}, {} );
+        return $schema;
+    }
+
+    # Recursively parse $rel and its imports into $schema. $in_progress holds the
+    # absolute paths currently on the import stack (cycle detection); $visited
+    # holds those already added to $schema (so each file is added exactly once,
+    # even across diamond imports).
+    method _collect_imports ($rel, $schema, $in_progress, $visited) {
+        my $abs = $self->_resolve_path($rel);
+
+        if ( $in_progress->{$abs} ) {
+            Proto3::Exception::Parser::ImportCycle->throw(
+                message => "circular import detected at $rel",
+            );
+        }
+        return if $visited->{$abs};
+
+        $in_progress->{$abs} = 1;
+
+        my $file = $self->parse_file($rel);
+        $self->_collect_imports( $_->{path}, $schema, $in_progress, $visited )
+            for @{ $file->imports };
+
+        delete $in_progress->{$abs};
+        $visited->{$abs} = 1;
+        $schema->add_file($file);
+        return;
     }
 
     # Parse proto3 $source as if it were the file named $name. Does not touch the
@@ -131,6 +168,10 @@ Proto3::Parser - parse .proto files into schema definitions
     # Or parse a string:
     my $file = $parser->parse_string('foo.proto', $proto_source);
 
+    # Walk imports automatically into a full Proto3::Schema:
+    my $schema = $parser->parse_with_imports('top.proto');
+    $schema->resolve;   # cross-file type references now linked
+
     # Round-trip a parsed file through canonical source:
     my $text = Proto3::Parser->serialize($file);
 
@@ -158,6 +199,17 @@ parse it into a L<Proto3::Schema::File>. The result is cached by I<absolute>
 path, so a subsequent C<parse_file> of the same file returns the same object.
 A file that no include path contains raises
 L<Proto3::Exception::Parser::ImportNotFound>.
+
+=item parse_with_imports($relative_path)
+
+Parse C<$relative_path> and every file it transitively C<import>s, returning a
+L<Proto3::Schema> with all of them registered. Each imported file is loaded
+through C<parse_file>, so the absolute-path cache deduplicates diamond imports:
+a file reachable by more than one path is parsed and added exactly once. Files
+are added in dependency order (imports before their importers). A circular
+import chain raises L<Proto3::Exception::Parser::ImportCycle>; a missing
+imported file raises L<Proto3::Exception::Parser::ImportNotFound>. Call
+C<< $schema->resolve >> on the result to link cross-file type references.
 
 =item parse_string($name, $source)
 

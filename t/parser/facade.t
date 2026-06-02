@@ -225,4 +225,140 @@ subtest 'parse_file: missing file raises ImportNotFound' => sub {
     like "$err", qr/nope\.proto/, 'error names the missing file';
 };
 
+# --- 20.1 parse_with_imports collects transitive files (T-parse-9) ----------
+
+subtest 'parse_with_imports: follows a 3-deep import chain' => sub {
+    my $root = tempdir( CLEANUP => 1 );
+
+    # top.proto -> mid.proto -> leaf.proto
+    write_proto( $root, 'top.proto', <<'PROTO' );
+syntax = "proto3";
+package chain;
+import "mid.proto";
+message Top { Mid m = 1; }
+PROTO
+    write_proto( $root, 'mid.proto', <<'PROTO' );
+syntax = "proto3";
+package chain;
+import "leaf.proto";
+message Mid { Leaf l = 1; }
+PROTO
+    write_proto( $root, 'leaf.proto', <<'PROTO' );
+syntax = "proto3";
+package chain;
+message Leaf { int32 v = 1; }
+PROTO
+
+    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $schema = $parser->parse_with_imports('top.proto');
+
+    isa_ok $schema, 'Proto3::Schema', 'returns a Proto3::Schema';
+    ok $schema->file('top.proto'),  'top file present';
+    ok $schema->file('mid.proto'),  'transitively-imported mid present';
+    ok $schema->file('leaf.proto'), 'transitively-imported leaf present';
+    is scalar @{ $schema->files }, 3, 'exactly three files collected';
+    ok $schema->message('chain.Top'),  'Top indexed';
+    ok $schema->message('chain.Mid'),  'Mid indexed';
+    ok $schema->message('chain.Leaf'), 'Leaf indexed';
+};
+
+# --- 20.2 diamond imports load each file exactly once -----------------------
+
+subtest 'parse_with_imports: diamond loads each file once' => sub {
+    my $root = tempdir( CLEANUP => 1 );
+
+    #   top -> left -> base
+    #   top -> right -> base
+    write_proto( $root, 'top.proto', <<'PROTO' );
+syntax = "proto3";
+package dia;
+import "left.proto";
+import "right.proto";
+message Top { Left a = 1; Right b = 2; }
+PROTO
+    write_proto( $root, 'left.proto', <<'PROTO' );
+syntax = "proto3";
+package dia;
+import "base.proto";
+message Left { Base x = 1; }
+PROTO
+    write_proto( $root, 'right.proto', <<'PROTO' );
+syntax = "proto3";
+package dia;
+import "base.proto";
+message Right { Base y = 1; }
+PROTO
+    write_proto( $root, 'base.proto', <<'PROTO' );
+syntax = "proto3";
+package dia;
+message Base { int32 v = 1; }
+PROTO
+
+    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $schema = $parser->parse_with_imports('top.proto');
+
+    is scalar @{ $schema->files }, 4, 'four distinct files (base once)';
+    my @base = grep { $_->name eq 'base.proto' } @{ $schema->files };
+    is scalar @base, 1, 'base.proto added exactly once';
+    # The cache guarantees identity: both importers see the same object.
+    is $parser->parse_file('base.proto'), $base[0],
+        'cached base is the same object that was collected';
+};
+
+# --- 20.3 import cycle -> ImportCycle (T-parse-9) ---------------------------
+
+subtest 'parse_with_imports: import cycle raises ImportCycle' => sub {
+    my $root = tempdir( CLEANUP => 1 );
+
+    # a -> b -> a
+    write_proto( $root, 'a.proto', <<'PROTO' );
+syntax = "proto3";
+package cyc;
+import "b.proto";
+message A { int32 v = 1; }
+PROTO
+    write_proto( $root, 'b.proto', <<'PROTO' );
+syntax = "proto3";
+package cyc;
+import "a.proto";
+message B { int32 v = 1; }
+PROTO
+
+    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $err = exception_from( sub { $parser->parse_with_imports('a.proto') } );
+    ok $err, 'cyclic import raises';
+    isa_ok $err, 'Proto3::Exception::Parser::ImportCycle',
+        'raises ImportCycle';
+};
+
+# --- 20.4 resolved cross-file reference links (parser + resolver) -----------
+
+subtest 'parse_with_imports: resolved schema links cross-file reference' => sub {
+    my $root = tempdir( CLEANUP => 1 );
+
+    write_proto( $root, 'top.proto', <<'PROTO' );
+syntax = "proto3";
+package x;
+import "dep.proto";
+message Holder { Payload p = 1; }
+PROTO
+    write_proto( $root, 'dep.proto', <<'PROTO' );
+syntax = "proto3";
+package x;
+message Payload { string s = 1; }
+PROTO
+
+    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $schema = $parser->parse_with_imports('top.proto');
+    $schema->resolve;
+
+    my $holder = $schema->message('x.Holder');
+    ok $holder, 'Holder resolved';
+    my ($field) = @{ $holder->fields };
+    is $field->name, 'p', 'field is p';
+    ok $field->is_message, 'p is a message-typed field';
+    is $field->type_ref, $schema->message('x.Payload'),
+        'cross-file reference links to the imported definition';
+};
+
 done_testing;

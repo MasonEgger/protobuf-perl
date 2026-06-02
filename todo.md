@@ -244,14 +244,14 @@ work completes. Each step ends by running `just check`.
 - [x] 19.10 Verify: `just check`
 
 ### Step 20: Parser — transitive imports
-- [ ] 20.1 RED: parse_with_imports collects transitive files (T-parse-9)
-- [ ] 20.2 RED: diamond imports load once
-- [ ] 20.3 RED: import cycle -> ImportCycle (T-parse-9)
-- [ ] 20.4 RED: resolved cross-file reference links (parser+resolver)
-- [ ] 20.5 GREEN: parse_with_imports (cycle set + dedup + Schema build)
-- [ ] 20.6 REFACTOR: in-progress/visited bookkeeping
-- [ ] 20.7 Document POD
-- [ ] 20.8 Verify: `just check`
+- [x] 20.1 RED: parse_with_imports collects transitive files (T-parse-9)
+- [x] 20.2 RED: diamond imports load once
+- [x] 20.3 RED: import cycle -> ImportCycle (T-parse-9)
+- [x] 20.4 RED: resolved cross-file reference links (parser+resolver)
+- [x] 20.5 GREEN: parse_with_imports (cycle set + dedup + Schema build)
+- [x] 20.6 REFACTOR: in-progress/visited bookkeeping
+- [x] 20.7 Document POD
+- [x] 20.8 Verify: `just check`
 
 ### Step 21: Parser — proto3 restrictions
 - [ ] 21.1 RED: syntax proto2 -> UnsupportedSyntax (T-parse-12)
