@@ -8,6 +8,14 @@ package Proto3::Class::Generator;
 use Scalar::Util ();
 use Proto3::Exception;
 use Proto3::Class::Accessor ();
+use Proto3::Codec ();
+
+# Registry of every class built by this module, keyed by the owning message's
+# fully-qualified name. decode() consults it to materialize a nested message
+# field's decoded hashref into the corresponding generated class instance,
+# rather than leaving it as a bare hashref. A message with no generated class
+# (absent from the registry) decodes into a plain hashref, unchanged.
+my %CLASS_FOR_MESSAGE;    # full_name => target package
 
 # The set of proto3 scalar types whose values must look like a number. A wrong-
 # type value assigned to such a field (via the constructor or a setter) raises
@@ -39,15 +47,29 @@ my %NUMERIC_TYPE = map { $_ => 1 } qw(
 #   new(\%fields)     construct; an unknown key raises Argument naming it
 #   to_hashref        shallow copy of stored fields, keyed by proto field name
 #   descriptor        returns the Schema::Message (callable on class or instance)
+#   encode            (instance) serialize to wire bytes via the shared codec
+#   decode($bytes)    (class) deserialize; nested message fields become their
+#                     generated class instances (thin codec adapters, §4.6)
 sub build {
     my ( $class, %args ) = @_;
 
     my $message = $args{message}
         or Proto3::Exception::Argument->throw(
         message => 'build requires a message' );
+    my $schema = $args{schema}
+        or Proto3::Exception::Argument->throw(
+        message => 'build requires a schema' );
     my $target = $args{target_package}
         or Proto3::Exception::Argument->throw(
         message => 'build requires a target_package' );
+
+    # Register this class so decode() can materialize it as a nested field of
+    # some other generated message.
+    $CLASS_FOR_MESSAGE{ $message->full_name } = $target;
+
+    # One codec over the schema, shared by every instance's encode/decode (the
+    # generated methods are thin adapters — all wire logic lives in the codec).
+    my $codec = Proto3::Codec->new( schema => $schema );
 
     my @fields = @{ $message->fields };
 
@@ -88,6 +110,27 @@ sub build {
     *{"${target}::to_hashref"} = sub {
         my ($self) = @_;
         return { %$self };
+    };
+
+    my $full_name = $message->full_name;
+
+    # encode($self) -> wire bytes. A thin adapter over the shared codec: hand it
+    # the message's hashref form (blessed nested instances are themselves
+    # blessed hashrefs the codec reads through, so to_hashref's shallow copy is
+    # sufficient — the codec recurses on field name lookups).
+    *{"${target}::encode"} = sub {
+        my ($self) = @_;
+        return $codec->encode( $full_name, $self->to_hashref );
+    };
+
+    # $class->decode($bytes) -> an instance. Decodes to a plain hashref via the
+    # codec, then materializes that hashref (and any nested message fields) into
+    # generated class instances.
+    *{"${target}::decode"} = sub {
+        my ( $invocant, $bytes ) = @_;
+        my $values = $codec->decode( $full_name, $bytes );
+        return _materialize( $schema, $message, $values,
+            ref $invocant || $invocant );
     };
 
     # Map each oneof's index to the proto field names of its members, so a
@@ -246,6 +289,86 @@ sub _clear_siblings ($self, $siblings) {
     return;
 }
 
+# Turn a codec-decoded hashref into a generated class instance. $message is the
+# Schema::Message describing $values; $target is the package to bless the result
+# into. Each message-typed field's value (a hashref, or arrayref/hashref of
+# hashrefs for repeated/map) is recursively materialized into its own generated
+# class when one is registered; a field whose message type has no generated
+# class is left as-is. The result is a blessed hashref keyed by proto field name
+# (the same shape new/to_hashref use), so accessors work unchanged.
+sub _materialize ($schema, $message, $values, $target) {
+    my %materialized = %$values;
+
+    for my $field ( @{ $message->fields } ) {
+        next unless $field->is_message;
+
+        my $name = $field->name;
+        next unless exists $materialized{$name} && defined $materialized{$name};
+
+        my $nested_message = _message_for_field( $schema, $field );
+        next unless $nested_message;
+
+        my $value = $materialized{$name};
+        if ( $field->is_map ) {
+            # Map message-valued entries: materialize each value hashref. The
+            # map's value type is the MapEntry's field 2, not $field's type.
+            my $value_message = _map_value_message( $schema, $nested_message );
+            my $value_pkg =
+                $value_message
+                ? $CLASS_FOR_MESSAGE{ $value_message->full_name }
+                : undef;
+            next unless $value_message && $value_pkg;
+            $materialized{$name} = {
+                map {
+                    $_ => _materialize( $schema, $value_message,
+                        $value->{$_}, $value_pkg )
+                } keys %$value
+            };
+        }
+        else {
+            my $nested_pkg = $CLASS_FOR_MESSAGE{ $nested_message->full_name };
+            next unless $nested_pkg;    # no generated class -> leave as hashref
+            if ( $field->is_repeated ) {
+                $materialized{$name} = [
+                    map {
+                        _materialize( $schema, $nested_message, $_,
+                            $nested_pkg )
+                    } @$value
+                ];
+            }
+            else {
+                $materialized{$name} =
+                    _materialize( $schema, $nested_message, $value,
+                    $nested_pkg );
+            }
+        }
+    }
+
+    return bless \%materialized, $target;
+}
+
+# The Schema::Message a message-typed field points at: prefer the resolver-set
+# type_ref, fall back to a schema lookup of the raw type_name. Returns undef
+# when neither resolves to a message.
+sub _message_for_field ($schema, $field) {
+    my $ref = $field->type_ref;
+    return $ref if $ref && Scalar::Util::blessed($ref) && $ref->can('fields');
+
+    my $type_name = $field->type_name;
+    return undef unless defined $type_name;
+    ( my $bare = $type_name ) =~ s/^\.//;    # strip leading dot if fully-qualified
+    return $schema->message($bare);
+}
+
+# Given a synthetic MapEntry Schema::Message, return the Schema::Message of its
+# value field (number 2) when that value is itself a message, else undef.
+sub _map_value_message ($schema, $map_entry) {
+    my ($value_field) =
+        grep { $_->number == 2 } @{ $map_entry->fields };
+    return undef unless $value_field && $value_field->is_message;
+    return _message_for_field( $schema, $value_field );
+}
+
 # Raise Codec::TypeMismatch when $value is unusable for a numeric scalar field.
 # A numeric field requires a number-looking value (a blessed Math::BigInt is
 # allowed); string/bytes and non-scalar field kinds accept the value here
@@ -299,6 +422,9 @@ Proto3::Class::Generator - Build a Perl class at runtime from a Schema::Message
     $msg->to_hashref;                       # { ... } keyed by proto field name
     T::Api::Common::V1::Payload->descriptor;  # the Schema::Message
 
+    my $bytes = $msg->encode;               # proto3 wire bytes
+    my $back  = T::Api::Common::V1::Payload->decode($bytes);  # an instance
+
 =head1 DESCRIPTION
 
 C<build> installs a class, named by C<target_package>, whose shape is driven by
@@ -334,6 +460,23 @@ returns C<$self> so setters chain.
 =item C<< $obj->clear_NAME >>
 
 Removes the field's value and returns C<$self>.
+
+=item C<< $obj->encode >>
+
+Serializes the instance to proto3 wire bytes. A thin adapter over
+L<Proto3::Codec>: equivalent to C<< $codec->encode($full_name, $obj->to_hashref) >>
+for a codec built over the same schema. All wire logic lives in the codec; the
+generated method only supplies the message name and the instance's hashref form.
+
+=item C<< $class->decode($bytes) >>
+
+Class method. Decodes proto3 wire C<$bytes> into a new instance. Equivalent to
+the codec's hashref decode, except that B<nested message fields are materialized
+into their corresponding generated class instances> (singular, repeated, and
+message-valued map entries alike) rather than left as bare hashrefs — provided a
+class has been generated for the nested message type. A nested message with no
+generated class decodes into a plain hashref. Round-trips with C<encode>:
+C<< $class->decode($obj->encode)->to_hashref >> equals C<< $obj->to_hashref >>.
 
 =item C<< $obj->has_NAME >>
 

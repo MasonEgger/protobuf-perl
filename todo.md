@@ -306,14 +306,14 @@ work completes. Each step ends by running `just check`.
 - [x] 24.8 Verify: `just check`
 
 ### Step 25: Class generator — encode/decode integration
-- [ ] 25.1 RED: instance encode == codec encode of to_hashref
-- [ ] 25.2 RED: Class->decode equals codec hashref decode
-- [ ] 25.3 RED: new->encode->decode->to_hashref equals original (T-class-7)
-- [ ] 25.4 RED: nested message fields decode into nested class instances
-- [ ] 25.5 GREEN: instance encode + class decode (thin codec adapters)
-- [ ] 25.6 REFACTOR: no codec logic duplication
-- [ ] 25.7 Document POD
-- [ ] 25.8 Verify: `just check`
+- [x] 25.1 RED: instance encode == codec encode of to_hashref
+- [x] 25.2 RED: Class->decode equals codec hashref decode
+- [x] 25.3 RED: new->encode->decode->to_hashref equals original (T-class-7)
+- [x] 25.4 RED: nested message fields decode into nested class instances
+- [x] 25.5 GREEN: instance encode + class decode (thin codec adapters)
+- [x] 25.6 REFACTOR: no codec logic duplication
+- [x] 25.7 Document POD
+- [x] 25.8 Verify: `just check`
 
 ---
 
