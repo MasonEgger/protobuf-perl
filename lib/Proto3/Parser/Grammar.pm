@@ -31,6 +31,16 @@ my %SCALAR_TYPE = map { $_ => 1 } qw(
 # Field-label keywords that may precede a field type.
 my %LABEL = ( repeated => 1, optional => 1 );
 
+# proto2-only constructs proto3 forbids (spec §4.4). These tokenize as plain
+# identifiers (they are not proto3 keywords), so the grammar checks for them
+# explicitly and reports which one was used. `optional` is intentionally absent:
+# proto3 3.15+ accepts it for explicit presence.
+my %PROTO2_FORBIDDEN = map { $_ => 1 } qw( required group extensions extend );
+
+# Bracketed field options proto3 forbids. A scalar default value is a proto2-only
+# construct; proto3 fixes scalar defaults to the zero value.
+my %FORBIDDEN_FIELD_OPTION = ( default => 1 );
+
 sub new {
     my ( $class, %args ) = @_;
     my $tokens =
@@ -112,6 +122,17 @@ sub _error {
     );
 }
 
+# Like _error but raises the UnsupportedSyntax subclass, used for a wholesale
+# wrong/absent file syntax declaration (proto2 or none).
+sub _error_unsupported {
+    my ( $self, $message, $token ) = @_;
+    Proto3::Exception::Parser::UnsupportedSyntax->throw(
+        message => "$message (in $self->{file_name})",
+        line    => $token ? $token->{line} : undef,
+        column  => $token ? $token->{col}  : undef,
+    );
+}
+
 # --- grammar --------------------------------------------------------------
 
 # Parse the whole file into a Proto3::Schema::File. The first non-comment
@@ -185,20 +206,25 @@ sub _parse_import {
     return { path => $path, kind => $kind };
 }
 
-# syntax = "proto3"; — required as the first statement.
+# syntax = "proto3"; — required as the first statement. A missing declaration or
+# a non-proto3 value (e.g. proto2) is an unsupported-syntax error, not a generic
+# parse error: proto3 is the only dialect this library accepts (spec §4.4).
 sub _parse_syntax {
     my ($self) = @_;
     my $first = $self->_peek;
     if ( !$first || !( $first->{type} eq 'keyword' && $first->{value} eq 'syntax' ) )
     {
-        $self->_error(
-            'expected `syntax = "proto3";` as the first statement', $first );
+        $self->_error_unsupported(
+            'missing `syntax = "proto3";` declaration (proto3 is required)',
+            $first );
     }
     $self->_expect( 'keyword', 'syntax' );
     $self->_expect( 'punct',   '=' );
     my $value = $self->_expect('string');
     if ( $value->{value} ne 'proto3' ) {
-        $self->_error( "unsupported syntax '$value->{value}'", $value );
+        $self->_error_unsupported(
+            "unsupported syntax '$value->{value}' (only proto3 is supported)",
+            $value );
     }
     $self->_expect( 'punct', ';' );
     return;
@@ -558,10 +584,24 @@ sub _full_name {
     return length $prefix ? "$prefix.$name" : $name;
 }
 
+# Raise a Parser error naming the keyword when a message-body statement starts
+# with a proto2-only construct (`required`, `group`, `extensions`, `extend`).
+# These lex as plain identifiers, so we inspect the leading token's value and
+# report precisely which forbidden keyword was used (spec §4.4).
+sub _reject_proto2_construct {
+    my ($self) = @_;
+    my $token = $self->_peek;
+    return unless $token && $PROTO2_FORBIDDEN{ $token->{value} };
+    $self->_error(
+        "`$token->{value}` is not allowed in proto3 (proto2-only)", $token );
+}
+
 # [label] type name = number;  — $oneof_index, when defined, marks the field as
 # a member of the oneof at that index (oneof members carry no label).
 sub _parse_field {
     my ( $self, $oneof_index ) = @_;
+
+    $self->_reject_proto2_construct;
 
     my $label = 'singular';
     my $token = $self->_peek;
@@ -600,7 +640,14 @@ sub _parse_field_options {
 
     $self->_next;    # consume '['
     do {
-        my $name = $self->_parse_dotted_name;
+        my $name_token = $self->_peek;
+        my $name       = $self->_parse_dotted_name;
+        if ( $FORBIDDEN_FIELD_OPTION{$name} ) {
+            $self->_error(
+                "the `$name` field option is not allowed in proto3 "
+                    . '(scalar default values are proto2-only)',
+                $name_token );
+        }
         $self->_expect( 'punct', '=' );
         $options{$name} = $self->_next->{value};
     } while ( $self->_consume_comma );
@@ -682,9 +729,20 @@ whole grammar.
 
 =item *
 
-C<syntax = "proto3";> is required as the first statement. A missing declaration,
-a different first statement, or any non-C<proto3> syntax value raises
-L<Proto3::Exception::Parser> carrying the offending source C<line>/C<column>.
+C<syntax = "proto3";> is required as the first statement. A missing declaration
+or any non-C<proto3> syntax value (e.g. C<"proto2">) raises
+L<Proto3::Exception::Parser::UnsupportedSyntax> carrying the offending source
+C<line>/C<column>; the message names the rejected syntax value.
+
+=item *
+
+proto3 rejects proto2-only constructs. Using C<required>, C<group>,
+C<extensions>, or C<extend> raises L<Proto3::Exception::Parser> with a message
+naming the forbidden keyword and its C<line>/C<column>. A scalar default-value
+expression (C<< int32 x = 1 [default = 5]; >>) likewise raises, since proto3
+fixes scalar defaults to the zero value. The proto3 C<optional> keyword (added
+in protobuf 3.15 for explicit presence) is I<accepted> and marks the field with
+the C<optional> label.
 
 =item *
 

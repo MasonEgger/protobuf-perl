@@ -254,16 +254,16 @@ work completes. Each step ends by running `just check`.
 - [x] 20.8 Verify: `just check`
 
 ### Step 21: Parser — proto3 restrictions
-- [ ] 21.1 RED: syntax proto2 -> UnsupportedSyntax (T-parse-12)
-- [ ] 21.2 RED: no syntax -> UnsupportedSyntax
-- [ ] 21.3 RED: required -> Parser names keyword (T-parse-13)
-- [ ] 21.4 RED: group -> Parser error
-- [ ] 21.5 RED: scalar default expression -> Parser error
-- [ ] 21.6 RED: optional keyword ACCEPTED (no raise)
-- [ ] 21.7 GREEN: restriction checks in Lexer/Grammar with line/col
-- [ ] 21.8 REFACTOR: forbidden-keyword set
-- [ ] 21.9 Document POD (what proto3 rejects)
-- [ ] 21.10 Verify: `just check`
+- [x] 21.1 RED: syntax proto2 -> UnsupportedSyntax (T-parse-12)
+- [x] 21.2 RED: no syntax -> UnsupportedSyntax
+- [x] 21.3 RED: required -> Parser names keyword (T-parse-13)
+- [x] 21.4 RED: group -> Parser error
+- [x] 21.5 RED: scalar default expression -> Parser error
+- [x] 21.6 RED: optional keyword ACCEPTED (no raise)
+- [x] 21.7 GREEN: restriction checks in Lexer/Grammar with line/col
+- [x] 21.8 REFACTOR: forbidden-keyword set
+- [x] 21.9 Document POD (what proto3 rejects)
+- [x] 21.10 Verify: `just check`
 
 ### Step 22: DescriptorSet load + resolver differential
 - [ ] 22.1 RED: t/descriptor/load.t — FDS load matches parser output (T-fds-1)
