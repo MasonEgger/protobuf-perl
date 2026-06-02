@@ -196,17 +196,17 @@ work completes. Each step ends by running `just check`.
 ## Phase 3 — Parser + DescriptorSet
 
 ### Step 16: Lexer (Proto3::Parser::Lexer)
-- [ ] 16.1 RED: identifiers/fullIdent/int(dec,hex,oct)/float/bool tokens
-- [ ] 16.2 RED: string literals + escapes (\n \t \" \\ \xNN octal) decode
-- [ ] 16.3 RED: keyword vs identifier (message vs messages)
-- [ ] 16.4 RED: punctuation tokens
-- [ ] 16.5 RED: // and /* */ comments discarded
-- [ ] 16.6 RED: tokens carry line+col; multi-line positions
-- [ ] 16.7 RED: unterminated string/comment -> Parser with line/col
-- [ ] 16.8 GREEN: lib/Proto3/Parser/Lexer.pm
-- [ ] 16.9 REFACTOR: table-driven keywords/punctuation
-- [ ] 16.10 Document POD (token kinds)
-- [ ] 16.11 Verify: `just check`
+- [x] 16.1 RED: identifiers/fullIdent/int(dec,hex,oct)/float/bool tokens
+- [x] 16.2 RED: string literals + escapes (\n \t \" \\ \xNN octal) decode
+- [x] 16.3 RED: keyword vs identifier (message vs messages)
+- [x] 16.4 RED: punctuation tokens
+- [x] 16.5 RED: // and /* */ comments discarded
+- [x] 16.6 RED: tokens carry line+col; multi-line positions
+- [x] 16.7 RED: unterminated string/comment -> Parser with line/col
+- [x] 16.8 GREEN: lib/Proto3/Parser/Lexer.pm
+- [x] 16.9 REFACTOR: table-driven keywords/punctuation
+- [x] 16.10 Document POD (token kinds)
+- [x] 16.11 Verify: `just check`
 
 ### Step 17: Grammar core — message/fields/scalars
 - [ ] 17.1 RED: syntax+package+message, field per scalar type (T-parse-2)

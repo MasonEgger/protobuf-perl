@@ -58,7 +58,15 @@ class Proto3::Exception::Schema::UnresolvedType :isa(Proto3::Exception::Schema) 
 }
 
 # --- Parser ---------------------------------------------------------------
-class Proto3::Exception::Parser :isa(Proto3::Exception) {}
+# Parser errors additionally carry the 1-based source line and column where the
+# problem was detected, so callers can point at the offending .proto location.
+class Proto3::Exception::Parser :isa(Proto3::Exception) {
+    field $line   :param = undef;
+    field $column :param = undef;
+
+    method line   { $line }
+    method column { $column }
+}
 class Proto3::Exception::Parser::ImportNotFound    :isa(Proto3::Exception::Parser) {}
 class Proto3::Exception::Parser::ImportCycle       :isa(Proto3::Exception::Parser) {}
 class Proto3::Exception::Parser::UnsupportedSyntax :isa(Proto3::Exception::Parser) {}
