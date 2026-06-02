@@ -209,15 +209,15 @@ work completes. Each step ends by running `just check`.
 - [x] 16.11 Verify: `just check`
 
 ### Step 17: Grammar core — message/fields/scalars
-- [ ] 17.1 RED: syntax+package+message, field per scalar type (T-parse-2)
-- [ ] 17.2 RED: json_name camelCase default
-- [ ] 17.3 RED: missing syntax proto3 first stmt -> raises
-- [ ] 17.4 RED: labels singular/repeated/optional(explicit presence)
-- [ ] 17.5 RED: field number+name; duplicate-number delegates to Schema
-- [ ] 17.6 GREEN: lib/Proto3/Parser/Grammar.pm (core constructs)
-- [ ] 17.7 REFACTOR: token-cursor abstraction
-- [ ] 17.8 Document POD + grammar.txt reference copy
-- [ ] 17.9 Verify: `just check`
+- [x] 17.1 RED: syntax+package+message, field per scalar type (T-parse-2)
+- [x] 17.2 RED: json_name camelCase default
+- [x] 17.3 RED: missing syntax proto3 first stmt -> raises
+- [x] 17.4 RED: labels singular/repeated/optional(explicit presence)
+- [x] 17.5 RED: field number+name; duplicate-number delegates to Schema
+- [x] 17.6 GREEN: lib/Proto3/Parser/Grammar.pm (core constructs)
+- [x] 17.7 REFACTOR: token-cursor abstraction
+- [x] 17.8 Document POD + grammar.txt reference copy
+- [x] 17.9 Verify: `just check`
 
 ### Step 18: Grammar — nested/enum/oneof/map/reserved
 - [ ] 18.1 RED: nested message dotted full_name (T-parse-3)
