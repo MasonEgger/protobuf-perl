@@ -283,17 +283,17 @@ work completes. Each step ends by running `just check`.
 ## Phase 4 — Class generation
 
 ### Step 23: Class generator — accessors + construction
-- [ ] 23.1 RED: build + new + getters + to_hashref round-trip (T-class-1)
-- [ ] 23.2 RED: chainable setters return $self (T-class-2)
-- [ ] 23.3 RED: unknown ctor key -> Argument
-- [ ] 23.4 RED: wrong-type setter -> TypeMismatch
-- [ ] 23.5 RED: keyword-clash accessor package_ (T-class-8)
-- [ ] 23.6 RED: descriptor returns Schema::Message
-- [ ] 23.7 GREEN: lib/Proto3/Class/Generator.pm (build + reader/set/clear/descriptor)
-- [ ] 23.8 GREEN: lib/Proto3/Class/Accessor.pm (name computation)
-- [ ] 23.9 REFACTOR: per-field accessor spec
-- [ ] 23.10 Document POD (generated-class API)
-- [ ] 23.11 Verify: `just check`
+- [x] 23.1 RED: build + new + getters + to_hashref round-trip (T-class-1)
+- [x] 23.2 RED: chainable setters return $self (T-class-2)
+- [x] 23.3 RED: unknown ctor key -> Argument
+- [x] 23.4 RED: wrong-type setter -> TypeMismatch
+- [x] 23.5 RED: keyword-clash accessor package_ (T-class-8)
+- [x] 23.6 RED: descriptor returns Schema::Message
+- [x] 23.7 GREEN: lib/Proto3/Class/Generator.pm (build + reader/set/clear/descriptor)
+- [x] 23.8 GREEN: lib/Proto3/Class/Accessor.pm (name computation)
+- [x] 23.9 REFACTOR: per-field accessor spec
+- [x] 23.10 Document POD (generated-class API)
+- [x] 23.11 Verify: `just check`
 
 ### Step 24: Class generator — repeated/map/oneof/presence
 - [ ] 24.1 RED: repeated getter arrayref; add_ appends; set_ replaces (T-class-4)
