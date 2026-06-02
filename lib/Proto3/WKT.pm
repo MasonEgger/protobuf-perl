@@ -8,23 +8,42 @@ use Proto3::Schema;
 use Proto3::Schema::File;
 use Proto3::WKT::Timestamp;
 use Proto3::WKT::Duration;
+use Proto3::WKT::Empty;
+use Proto3::WKT::Any;
+use Proto3::WKT::FieldMask;
+use Proto3::WKT::Wrappers;
+use Proto3::WKT::Struct;
 
 class Proto3::WKT {
 
     # register($schema) — add the well-known-type messages to a Proto3::Schema
-    # and run resolve(). Currently registers Timestamp and Duration (Step 26);
-    # later steps extend this with the remaining WKTs. Each type's canonical
-    # Schema::Message is gathered into a single synthetic google/protobuf WKT
-    # file so the schema's fully-qualified index can find them by name (e.g.
-    # 'google.protobuf.Timestamp'). Returns $schema for chaining.
+    # and run resolve(). Each type's canonical Schema::Message is gathered into a
+    # single synthetic google/protobuf WKT file so the schema's fully-qualified
+    # index can find them by name (e.g. 'google.protobuf.Timestamp'). The nine
+    # primitive wrappers share one parametric handler, so their schemas come from
+    # Proto3::WKT::Wrappers->schema_message per name. The Struct family
+    # (Struct/Value/ListValue) reference each other and NullValue, so all are
+    # registered together and resolve() links the cross-references. Returns
+    # $schema for chaining.
     sub register ( $class, $schema ) {
+        my @messages = (
+            Proto3::WKT::Timestamp->schema_message,
+            Proto3::WKT::Duration->schema_message,
+            Proto3::WKT::Empty->schema_message,
+            Proto3::WKT::Any->schema_message,
+            Proto3::WKT::FieldMask->schema_message,
+            Proto3::WKT::Struct->schema_message,
+            Proto3::WKT::Value->schema_message,
+            Proto3::WKT::ListValue->schema_message,
+            map { Proto3::WKT::Wrappers->schema_message($_) }
+                Proto3::WKT::Wrappers->full_names,
+        );
+
         my $file = Proto3::Schema::File->new(
             name     => 'google/protobuf/wkt.proto',
             package  => 'google.protobuf',
-            messages => [
-                Proto3::WKT::Timestamp->schema_message,
-                Proto3::WKT::Duration->schema_message,
-            ],
+            messages => \@messages,
+            enums    => [ Proto3::WKT::NullValue->schema_enum ],
         );
         $schema->add_file($file);
         $schema->resolve;
@@ -38,6 +57,16 @@ class Proto3::WKT {
         state %HANDLER = (
             'google.protobuf.Timestamp' => 'Proto3::WKT::Timestamp',
             'google.protobuf.Duration'  => 'Proto3::WKT::Duration',
+            'google.protobuf.Empty'     => 'Proto3::WKT::Empty',
+            'google.protobuf.Any'       => 'Proto3::WKT::Any',
+            'google.protobuf.FieldMask' => 'Proto3::WKT::FieldMask',
+            'google.protobuf.Struct'    => 'Proto3::WKT::Struct',
+            'google.protobuf.Value'     => 'Proto3::WKT::Value',
+            'google.protobuf.ListValue' => 'Proto3::WKT::ListValue',
+            'google.protobuf.NullValue' => 'Proto3::WKT::NullValue',
+            # All nine primitive wrappers share the parametric handler.
+            map { $_ => 'Proto3::WKT::Wrappers' }
+                Proto3::WKT::Wrappers->full_names,
         );
         return $HANDLER{$full_name};
     }

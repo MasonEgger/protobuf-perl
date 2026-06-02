@@ -332,15 +332,15 @@ work completes. Each step ends by running `just check`.
 - [x] 26.10 Verify: `just check`
 
 ### Step 27: WKT — Any/Struct/FieldMask/Wrappers/Empty
-- [ ] 27.1 RED: Empty <-> {}
-- [ ] 27.2 RED: Any @type + inner fields (T-wkt-3)
-- [ ] 27.3 RED: FieldMask "a.b,c.d" camelCase (T-wkt-4)
-- [ ] 27.4 RED: Wrappers bare-value JSON (Int32Value(42)->42) (T-wkt-5)
-- [ ] 27.5 RED: Struct/Value/ListValue/NullValue round-trip (T-wkt-6)
-- [ ] 27.6 GREEN: WKT/{Empty,Any,Struct,FieldMask,Wrappers}.pm + register
-- [ ] 27.7 REFACTOR: parametric wrapper handling (9 types)
-- [ ] 27.8 Document POD per module
-- [ ] 27.9 Verify: `just check`
+- [x] 27.1 RED: Empty <-> {}
+- [x] 27.2 RED: Any @type + inner fields (T-wkt-3)
+- [x] 27.3 RED: FieldMask "a.b,c.d" camelCase (T-wkt-4)
+- [x] 27.4 RED: Wrappers bare-value JSON (Int32Value(42)->42) (T-wkt-5)
+- [x] 27.5 RED: Struct/Value/ListValue/NullValue round-trip (T-wkt-6)
+- [x] 27.6 GREEN: WKT/{Empty,Any,Struct,FieldMask,Wrappers}.pm + register
+- [x] 27.7 REFACTOR: parametric wrapper handling (9 types)
+- [x] 27.8 Document POD per module
+- [x] 27.9 Verify: `just check`
 
 ### Step 28: JSON encode (Proto3::JSON)
 - [ ] 28.1 RED: all scalar types serialize
