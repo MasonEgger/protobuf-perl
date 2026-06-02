@@ -8,11 +8,13 @@ class Proto3::Schema::Service {
     field $name      :param;
     field $full_name :param;
     field $methods   :param = [];   # arrayref of { name, input_type, output_type, ... }
+    field $options   :param = {};   # hashref of service-level options
 
     # Explicit readers (this Perl build has :param but not :reader).
     method name      { $name }
     method full_name { $full_name }
     method methods   { $methods }
+    method options   { $options }
 }
 
 1;
@@ -25,9 +27,11 @@ Proto3::Schema::Service - A service definition within a schema
 
 =head1 DESCRIPTION
 
-Models a C<ServiceDescriptorProto>: its name, fully-qualified name, and RPC
-methods (C<{ name, input_type, output_type, ... }> hashrefs). Parse-only — this
-library does not dispatch RPCs.
+Models a C<ServiceDescriptorProto>: its name, fully-qualified name, RPC methods,
+and service-level options. Each method is a hashref of the form
+C<< { name, input_type, output_type, client_streaming, server_streaming } >>,
+where the streaming flags are booleans driven by the C<stream> keyword on the
+request/response types. Parse-only — this library does not dispatch RPCs.
 
 =head1 LICENSE
 

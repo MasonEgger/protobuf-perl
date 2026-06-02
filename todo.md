@@ -232,16 +232,16 @@ work completes. Each step ends by running `just check`.
 - [x] 18.10 Verify: `just check`
 
 ### Step 19: Parser facade — files/includes/options/services
-- [ ] 19.1 RED: include_paths multi-root, first match, abs-path cache
-- [ ] 19.2 RED: import / import public / import weak kinds (T-parse-8)
-- [ ] 19.3 RED: file + message + field options into hashref
-- [ ] 19.4 RED: service + rpc (stream) parse-only into Schema::Service
-- [ ] 19.5 RED: parse->serialize->parse equivalent (T-parse-1)
-- [ ] 19.6 RED: missing import file -> ImportNotFound
-- [ ] 19.7 GREEN: lib/Proto3/Parser.pm (parse_file/parse_string + search + cache)
-- [ ] 19.8 REFACTOR: centralize include-path search
-- [ ] 19.9 Document POD (SYNOPSIS)
-- [ ] 19.10 Verify: `just check`
+- [x] 19.1 RED: include_paths multi-root, first match, abs-path cache
+- [x] 19.2 RED: import / import public / import weak kinds (T-parse-8)
+- [x] 19.3 RED: file + message + field options into hashref
+- [x] 19.4 RED: service + rpc (stream) parse-only into Schema::Service
+- [x] 19.5 RED: parse->serialize->parse equivalent (T-parse-1)
+- [x] 19.6 RED: missing import file -> ImportNotFound
+- [x] 19.7 GREEN: lib/Proto3/Parser.pm (parse_file/parse_string + search + cache)
+- [x] 19.8 REFACTOR: centralize include-path search
+- [x] 19.9 Document POD (SYNOPSIS)
+- [x] 19.10 Verify: `just check`
 
 ### Step 20: Parser — transitive imports
 - [ ] 20.1 RED: parse_with_imports collects transitive files (T-parse-9)

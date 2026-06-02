@@ -13,6 +13,7 @@ use Proto3::Schema::Message;
 use Proto3::Schema::Field;
 use Proto3::Schema::Enum;
 use Proto3::Schema::Oneof;
+use Proto3::Schema::Service;
 use Proto3::Exception;
 
 # Highest valid proto field number (2^29 - 1); the upper bound `reserved N to max`
@@ -121,15 +122,28 @@ sub parse {
 
     my @messages;
     my @enums;
+    my @services;
+    my @imports;
+    my %options;
     while ( !$self->_at_end ) {
         if ( $self->_is_keyword('package') ) {
             $self->_parse_package;
+        }
+        elsif ( $self->_is_keyword('import') ) {
+            push @imports, $self->_parse_import;
+        }
+        elsif ( $self->_is_keyword('option') ) {
+            my ( $name, $value ) = $self->_parse_option;
+            $options{$name} = $value;
         }
         elsif ( $self->_is_keyword('message') ) {
             push @messages, $self->_parse_message;
         }
         elsif ( $self->_is_keyword('enum') ) {
             push @enums, $self->_parse_enum;
+        }
+        elsif ( $self->_is_keyword('service') ) {
+            push @services, $self->_parse_service;
         }
         else {
             my $token = $self->_peek;
@@ -144,7 +158,31 @@ sub parse {
         syntax   => 'proto3',
         messages => \@messages,
         enums    => \@enums,
+        services => \@services,
+        imports  => \@imports,
+        options  => \%options,
     );
+}
+
+# import [public|weak] "path"; — returns { path => $rel, kind => $kind } where
+# $kind is 'normal', 'public', or 'weak'.
+sub _parse_import {
+    my ($self) = @_;
+    $self->_expect( 'keyword', 'import' );
+
+    my $kind = 'normal';
+    if ( $self->_is_keyword('public') ) {
+        $self->_next;
+        $kind = 'public';
+    }
+    elsif ( $self->_is_keyword('weak') ) {
+        $self->_next;
+        $kind = 'weak';
+    }
+
+    my $path = $self->_expect('string')->{value};
+    $self->_expect( 'punct', ';' );
+    return { path => $path, kind => $kind };
 }
 
 # syntax = "proto3"; — required as the first statement.
@@ -203,12 +241,17 @@ sub _parse_message {
     my @nested_enums;
     my @reserved_numbers;
     my @reserved_names;
+    my %options;
 
     until ( $self->_is_punct('}') ) {
         $self->_error('unexpected end of input in message body')
             if $self->_at_end;
 
-        if ( $self->_is_keyword('message') ) {
+        if ( $self->_is_keyword('option') ) {
+            my ( $opt_name, $opt_value ) = $self->_parse_option;
+            $options{$opt_name} = $opt_value;
+        }
+        elsif ( $self->_is_keyword('message') ) {
             push @nested_messages, $self->_parse_message($full_name);
         }
         elsif ( $self->_is_keyword('enum') ) {
@@ -241,6 +284,7 @@ sub _parse_message {
         nested_enums     => \@nested_enums,
         reserved_numbers => \@reserved_numbers,
         reserved_names   => \@reserved_names,
+        options          => \%options,
     );
 }
 
@@ -278,6 +322,93 @@ sub _parse_enum {
         values      => \@values,
         allow_alias => $allow_alias,
     );
+}
+
+# service Name { rpc ...; [option ...;] } — parse-only into a Schema::Service
+# (this library does not dispatch RPCs).
+sub _parse_service {
+    my ($self) = @_;
+    $self->_expect( 'keyword', 'service' );
+    my $name = $self->_expect('ident')->{value};
+    my $full_name = $self->_full_name( undef, $name );
+
+    $self->_expect( 'punct', '{' );
+    my @methods;
+    my %options;
+    until ( $self->_is_punct('}') ) {
+        $self->_error('unexpected end of input in service body')
+            if $self->_at_end;
+
+        if ( $self->_is_keyword('rpc') ) {
+            push @methods, $self->_parse_rpc;
+        }
+        elsif ( $self->_is_keyword('option') ) {
+            my ( $opt_name, $opt_value ) = $self->_parse_option;
+            $options{$opt_name} = $opt_value;
+        }
+        else {
+            my $token = $self->_peek;
+            $self->_error(
+                "unexpected token '$token->{value}' in service body", $token );
+        }
+    }
+    $self->_expect( 'punct', '}' );
+
+    return Proto3::Schema::Service->new(
+        name      => $name,
+        full_name => $full_name,
+        methods   => \@methods,
+        options   => \%options,
+    );
+}
+
+# rpc Name (stream? InType) returns (stream? OutType) ( ; | { [option ...;] } )
+# — returns a method hashref with streaming flags. The (un)qualified type names
+# are recorded verbatim; resolution happens later.
+sub _parse_rpc {
+    my ($self) = @_;
+    $self->_expect( 'keyword', 'rpc' );
+    my $name = $self->_expect('ident')->{value};
+
+    my ( $client_streaming, $input_type )  = $self->_parse_rpc_type;
+    $self->_expect( 'keyword', 'returns' );
+    my ( $server_streaming, $output_type ) = $self->_parse_rpc_type;
+
+    # Body may be an empty `;` or a `{ ... }` block carrying options.
+    if ( $self->_is_punct('{') ) {
+        $self->_next;
+        until ( $self->_is_punct('}') ) {
+            $self->_error('unexpected end of input in rpc body')
+                if $self->_at_end;
+            $self->_parse_option if $self->_is_keyword('option');
+        }
+        $self->_expect( 'punct', '}' );
+    }
+    else {
+        $self->_expect( 'punct', ';' );
+    }
+
+    return {
+        name             => $name,
+        input_type       => $input_type,
+        output_type      => $output_type,
+        client_streaming => $client_streaming,
+        server_streaming => $server_streaming,
+    };
+}
+
+# ( [stream] TypeName ) — returns ($is_streaming, $type_name).
+sub _parse_rpc_type {
+    my ($self) = @_;
+    $self->_expect( 'punct', '(' );
+    my $streaming = 0;
+    if ( $self->_is_keyword('stream') ) {
+        $self->_next;
+        $streaming = 1;
+    }
+    my $type = $self->_parse_dotted_name;
+    $self->_expect( 'punct', ')' );
+    return ( $streaming, $type );
 }
 
 # option name = value; — returns ($name, $value). Used for enum allow_alias.
@@ -441,8 +572,12 @@ sub _parse_field {
     my ( $type, $type_name ) = $self->_parse_field_type;
     my $name = $self->_expect('ident')->{value};
     $self->_expect( 'punct', '=' );
-    my $number = $self->_expect('int')->{value};
+    my $number  = $self->_expect('int')->{value};
+    my $options = $self->_parse_field_options;
     $self->_expect( 'punct', ';' );
+
+    # A json_name option overrides the camelCase default.
+    my $json_name = $options->{json_name} // _camel_case($name);
 
     return Proto3::Schema::Field->new(
         name        => $name,
@@ -451,8 +586,27 @@ sub _parse_field {
         type_name   => $type_name,
         label       => $label,
         oneof_index => $oneof_index,
-        json_name   => _camel_case($name),
+        json_name   => $json_name,
+        options     => $options,
     );
+}
+
+# [ name = value, name = value, ... ] — an optional bracketed field-option list.
+# Returns a hashref (empty when no bracket is present).
+sub _parse_field_options {
+    my ($self) = @_;
+    my %options;
+    return \%options unless $self->_is_punct('[');
+
+    $self->_next;    # consume '['
+    do {
+        my $name = $self->_parse_dotted_name;
+        $self->_expect( 'punct', '=' );
+        $options{$name} = $self->_next->{value};
+    } while ( $self->_consume_comma );
+    $self->_expect( 'punct', ']' );
+
+    return \%options;
 }
 
 # Parse a field's type, returning ($type, $type_name). A scalar keyword returns
@@ -513,10 +667,11 @@ Proto3::Parser::Grammar - recursive-descent parser for .proto source
 
 A hand-written recursive-descent parser that consumes the token stream produced
 by L<Proto3::Parser::Lexer> and builds a L<Proto3::Schema::File>. It handles the
-file C<syntax> declaration, the C<package> directive, top-level and nested
-messages and enums, and message bodies containing scalar/message/enum fields,
-C<oneof> groups, C<map> fields, and C<reserved> declarations (spec §4.4). Later
-stages extend it with imports, options, and services.
+file C<syntax> declaration, the C<package> directive, C<import> statements
+(plain/public/weak), file-, message-, service-, and field-level C<option>s,
+top-level and nested messages and enums, C<service>/C<rpc> definitions
+(including C<stream>), and message bodies containing scalar/message/enum fields,
+C<oneof> groups, C<map> fields, and C<reserved> declarations (spec §4.4).
 
 A single token-cursor abstraction (C<_peek> / C<_next> / C<_expect>) drives the
 whole grammar.
@@ -574,6 +729,25 @@ field 1 and C<value> at field 2. The entry message is named C<< <Field>Entry >>.
 C<reserved> declarations populate the message's C<reserved_numbers> (as
 C<[lo, hi]> pairs, with C<N to max> expanding to the proto field-number maximum)
 and C<reserved_names>.
+
+=item *
+
+C<import>, C<import public>, and C<import weak> statements record
+C<< { path => $rel, kind => 'normal'|'public'|'weak' } >> hashrefs on the file.
+
+=item *
+
+C<option name = value;> at file, message, service, or RPC scope populates the
+corresponding C<options> hashref; bracketed field options
+(C<[deprecated = true, json_name = "x"]>) populate the field's C<options> (and a
+C<json_name> option overrides the camelCase default).
+
+=item *
+
+C<service> definitions build L<Proto3::Schema::Service> with one method hashref
+per C<rpc>, carrying C<input_type>/C<output_type> and C<client_streaming>/
+C<server_streaming> flags driven by the C<stream> keyword. Parsing is
+structural only — RPCs are never dispatched.
 
 =item *
 

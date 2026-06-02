@@ -11,7 +11,8 @@ class Proto3::Schema::File {
     field $enums    :param = [];            # arrayref of Schema::Enum
     field $services :param = [];            # arrayref of Schema::Service
     field $syntax   :param = 'proto3';
-    field $imports  :param = [];            # arrayref of import path strings
+    field $imports  :param = [];            # arrayref of { path, kind } hashrefs
+    field $options  :param = {};            # hashref of file-level options
 
     # Explicit readers (this Perl build has :param but not :reader).
     method name     { $name }
@@ -21,6 +22,7 @@ class Proto3::Schema::File {
     method services { $services }
     method syntax   { $syntax }
     method imports  { $imports }
+    method options  { $options }
 }
 
 1;
@@ -34,8 +36,10 @@ Proto3::Schema::File - One .proto file's top-level schema definitions
 =head1 DESCRIPTION
 
 The C<FileDescriptorProto> equivalent: file name, package, top-level messages,
-enums, services, syntax, and import paths. All fields are immutable after
-construction.
+enums, services, syntax, imports, and file-level options. C<imports> is an
+arrayref of C<< { path => $rel, kind => 'normal'|'public'|'weak' } >> hashrefs;
+C<options> is a hashref of file-level option name/value pairs. All fields are
+immutable after construction.
 
 =head1 LICENSE
 

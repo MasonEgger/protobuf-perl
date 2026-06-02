@@ -26,6 +26,7 @@ class Proto3::Schema::Field {
     field $map_entry   :param = undef;              # set for map fields
     field $oneof_index :param = undef;
     field $type_ref    :param = undef;              # populated by resolver
+    field $options     :param = {};                 # hashref of field options
 
     # Explicit reader methods: this Perl 5.38.2 build supports :param but not
     # the :reader field attribute.
@@ -39,6 +40,7 @@ class Proto3::Schema::Field {
     method map_entry   { $map_entry }
     method oneof_index { $oneof_index }
     method type_ref    { $type_ref }
+    method options     { $options }
 
     # The ONE post-construction mutation allowed on a Field (spec §4.2): the
     # resolver calls this to link the resolved Schema::Message/Schema::Enum once
