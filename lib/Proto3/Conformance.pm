@@ -257,6 +257,14 @@ sub Proto3::Conformance::run_stdio {
     my ( $in_fh, $out_fh ) = @_;
     binmode $in_fh;
     binmode $out_fh;
+    # The runner reads each response over a pipe before sending the next
+    # request, so every frame must leave Perl's buffer immediately. Without
+    # autoflush a block-buffered pipe holds the response and the runner
+    # deadlocks waiting for it. Use the select idiom so no IO::Handle load is
+    # required for a bareword STDOUT glob.
+    my $prev = select $out_fh;
+    $| = 1;
+    select $prev;
 
     my $served = 0;
     while ( defined( my $request_bytes = Proto3::Conformance::_read_frame($in_fh) ) ) {

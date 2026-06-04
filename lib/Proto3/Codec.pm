@@ -7,6 +7,7 @@ no warnings 'experimental::class';
 
 use Scalar::Util ();
 use Math::BigInt ();
+use Encode ();
 use Proto3::Exception;
 use Proto3::Wire ();
 use Proto3::Wire::Tag ();
@@ -94,8 +95,19 @@ my %SCALAR_TYPE = do {
     my $float   = sub ($v) { Proto3::Wire::encode_float($v) };
     my $double  = sub ($v) { Proto3::Wire::encode_double($v) };
     # Length-delimited: a varint byte-count prefix, then the raw payload.
+    # `bytes`: raw octets. Stringify, then drop the UTF-8 flag so length and the
+    # emitted bytes are octet-accurate; a wide char in a bytes field is a caller
+    # error, but downgrading keeps a pure-octet value (incl. high bytes) intact.
     my $len     = sub ($v) {
         my $bytes = "$v";
+        utf8::downgrade( $bytes, 1 );
+        return Proto3::Wire::encode_varint( length $bytes ) . $bytes;
+    };
+    # `string`: proto3 requires UTF-8 octets on the wire. Encode the character
+    # string to UTF-8 bytes so the length prefix counts bytes (not codepoints)
+    # and no wide character ever reaches the wire.
+    my $str     = sub ($v) {
+        my $bytes = Encode::encode( 'UTF-8', "$v" );
         return Proto3::Wire::encode_varint( length $bytes ) . $bytes;
     };
 
@@ -132,6 +144,12 @@ my %SCALAR_TYPE = do {
         }
         return ( substr( $rest, 0, $n ), substr( $rest, $n ) );
     };
+    # `string`: the LEN block holds UTF-8 octets; decode them back to a Perl
+    # character string so callers get text, mirroring the $str encoder.
+    my $d_str      = sub ($b) {
+        my ( $bytes, $rest ) = $d_len->($b);
+        return ( Encode::decode( 'UTF-8', $bytes ), $rest );
+    };
 
     (
         int32    => { wire => $W_VARINT, encode => $signed,   decode => $d_signed,   is_num => 1, default => 0 },
@@ -148,7 +166,7 @@ my %SCALAR_TYPE = do {
         fixed64  => { wire => $W_I64,    encode => $fixed64,  decode => $d_fixed64,  is_num => 1, default => 0 },
         sfixed64 => { wire => $W_I64,    encode => $fixed64,  decode => $d_fixed64,  is_num => 1, default => 0 },
         double   => { wire => $W_I64,    encode => $double,   decode => $d_double,   is_num => 1, default => 0 },
-        string   => { wire => $W_LEN,    encode => $len,      decode => $d_len,      is_num => 0, default => '' },
+        string   => { wire => $W_LEN,    encode => $str,      decode => $d_str,      is_num => 0, default => '' },
         bytes    => { wire => $W_LEN,    encode => $len,      decode => $d_len,      is_num => 0, default => '' },
     );
 };

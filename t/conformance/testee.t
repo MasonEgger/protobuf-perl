@@ -144,4 +144,65 @@ my $PAYLOAD = { optional_int32 => 42, optional_string => 'conformance' };
         '30.4c invalid JSON -> no protobuf_payload' );
 }
 
+# --- end-to-end stdio framing: the real binary must FLUSH each response -------
+# The conformance runner keeps the testee alive and reads its response over a
+# pipe before sending the next request. If run_stdio writes a response into a
+# block-buffered handle without flushing, the runner blocks forever waiting for
+# bytes stuck in Perl's buffer and the whole suite deadlocks. Drive the actual
+# bin/proto3-conformance over pipes and require a framed response back BEFORE
+# closing stdin; an unflushed write makes this read hang (caught by alarm).
+SKIP: {
+    require IPC::Open2;
+    my $payload_bytes = $codec->encode( $TESTMSG, $PAYLOAD );
+    my $req_bytes     = $codec->encode(
+        $REQUEST,
+        {
+            protobuf_payload        => $payload_bytes,
+            requested_output_format => $WIRE_PROTOBUF,
+            message_type            => $TESTMSG,
+        }
+    );
+
+    my ( $out, $in );
+    my $pid = eval {
+        IPC::Open2::open2( $out, $in, $^X, '-Ilib', 'bin/proto3-conformance' );
+    };
+    skip "cannot spawn testee: $@", 2 unless $pid;
+    binmode $in;
+    binmode $out;
+
+    my $resp_bytes = eval {
+        local $SIG{ALRM} = sub { die "timeout\n" };
+        alarm 20;
+        # Send one framed request but DO NOT close stdin — the testee must
+        # respond to this frame while still waiting for more, exactly as the
+        # runner drives it.
+        print {$in} pack( 'V', length $req_bytes ), $req_bytes;
+        $in->flush;
+        my $len_raw = '';
+        read( $out, $len_raw, 4 ) == 4 or die "no length prefix\n";
+        my $len = unpack 'V', $len_raw;
+        my $body = '';
+        while ( length $body < $len ) {
+            my $n = read( $out, my $c, $len - length $body );
+            last if !$n;
+            $body .= $c;
+        }
+        alarm 0;
+        $body;
+    };
+    my $err = $@;
+
+    # Clean up the child regardless of outcome.
+    close $in  if $in;
+    close $out if $out;
+    waitpid( $pid, 0 ) if $pid;
+
+    ok( !$err, 'run_stdio responds without deadlock (flushes each frame)' )
+        or diag("stdio round-trip failed: $err");
+    my $decoded = $err ? undef : eval { $codec->decode( $TESTMSG, $resp_bytes ) };
+    is( $decoded && $decoded->{optional_int32},
+        42, 'stdio round-trip returns the re-encoded payload' );
+}
+
 done_testing;
