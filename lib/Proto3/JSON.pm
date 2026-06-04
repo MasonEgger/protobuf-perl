@@ -410,12 +410,13 @@ class Proto3::JSON {
     }
 
     # True when a field uses explicit-presence JSON serialization (always
-    # emitted when set, even at the type default): `optional` fields and oneof
-    # members.
+    # emitted when set, even at the type default). Delegates to the Field's
+    # feature-driven presence model — the same source of truth the wire codec
+    # uses — so it covers proto2/editions EXPLICIT presence and LEGACY_REQUIRED,
+    # not just a literal `optional` label or oneof membership. A proto2 singular
+    # field set to its type-zero must still be emitted in JSON.
     method _has_explicit_presence ($field) {
-        return 1 if $field->label eq 'optional';
-        return 1 if defined $field->oneof_index;
-        return 0;
+        return $field->has_presence ? 1 : 0;
     }
 
     # True when $value is the proto3 implicit-presence default for a scalar

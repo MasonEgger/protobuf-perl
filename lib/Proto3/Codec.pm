@@ -881,17 +881,39 @@ class Proto3::Codec {
     method _decode_map ($field, $rest, $result) {
         my $map = $result->{ $field->name } //= {};
 
+        my $entry_name = $self->_field_message_name($field);
         ( my $entry, $rest ) = $self->_decode_embedded_message(
-            $self->_field_message_name($field), $rest,
+            $entry_name, $rest,
         );
 
-        # MapEntry omits a default-valued key/value on the wire. _apply_defaults
-        # restores a scalar key/value to its proto3 zero; a message-typed value
-        # left off the wire defaults to an empty message hashref here.
-        my $key   = $entry->{key};
-        my $value = exists $entry->{value} ? $entry->{value} : {};
+        # A MapEntry conceptually ALWAYS carries both a key (field 1) and a value
+        # (field 2), even though the wire omits either when it equals the type
+        # default. For a proto2/editions entry the key/value fields track explicit
+        # presence, so the generic _apply_defaults leaves an omitted one ABSENT
+        # rather than defaulting it — which would let an undef key or a stray
+        # message hashref leak into the map. Default-fill them here from the entry
+        # schema, treating key/value as always-present regardless of the entry's
+        # presence regime: a scalar defaults to its type-zero, a message-typed
+        # value to an empty message hashref.
+        my $key   = $self->_map_entry_default( $entry, $entry_name, 1 );
+        my $value = $self->_map_entry_default( $entry, $entry_name, 2 );
         $map->{$key} = $value;    # last value wins per key
         return $rest;
+    }
+
+    # Resolve a MapEntry's key (field number 1) or value (field number 2),
+    # defaulting it when the wire omitted the field. A scalar/enum defaults to its
+    # type-zero from %SCALAR_TYPE; a message-typed value defaults to an empty
+    # message hashref. The decoded entry's value, when present, is returned as-is.
+    method _map_entry_default ($entry, $entry_name, $number) {
+        my $message = $schema->message($entry_name);
+        my ($spec_field) =
+            grep { $_->number == $number } @{ $message->fields };
+        my $name = $spec_field->name;
+        return $entry->{$name} if exists $entry->{$name};
+
+        my $scalar = $SCALAR_TYPE{ $spec_field->type };
+        return $scalar ? $scalar->{default} : {};
     }
 
     # Read a length-delimited block: a varint byte-count prefix followed by that
