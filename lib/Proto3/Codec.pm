@@ -19,6 +19,7 @@ use Proto3::Wire::Tag ();
 # range. Pre-class lexicals (the feature 'class' package-scoping trap).
 my $TWO_64 = Math::BigInt->new(2)->bpow(64);
 my $TWO_63 = Math::BigInt->new(2)->bpow(63);
+my $TWO_32 = Math::BigInt->new(2)->bpow(32);
 
 # Signed int32/int64 helpers as anonymous coderefs in pre-class lexicals. They
 # live inside a `do {}` block on purpose: this Perl 5.38.2 build mis-parses a
@@ -114,11 +115,40 @@ my %SCALAR_TYPE = do {
     # --- decoders (mirror the encoders; the table is the single dispatch) ---
     # Every decoder returns ($value, $rest). decode_zigzag* yield only the value,
     # so we read the varint separately to recover the unconsumed remainder.
+    # Narrow a possibly-over-width integer to 32 bits the way protoc does: a
+    # 32-bit field on the wire may carry a full 64-bit varint, but the decoded
+    # value must wrap to its declared width. $wrap_u32 keeps the low 32 bits as
+    # unsigned (uint32); $wrap_i32 reinterprets them as signed (int32/sint32).
+    my $wrap_u32 = sub ($v) {
+        my $n = ref $v ? $v->copy->bmod($TWO_32)->numify : ( $v % ( 2**32 ) );
+        return $n;
+    };
+    my $wrap_i32 = sub ($v) {
+        my $n = $wrap_u32->($v);
+        $n -= 2**32 if $n >= 2**31;    # high bit set -> negative
+        return $n;
+    };
+
     my $d_varint   = sub ($b) { Proto3::Wire::decode_varint($b) };
     my $d_signed   = sub ($b) { $decode_signed_varint->($b) };
-    my $d_zigzag32 = sub ($b) {
+    # 32-bit varint decoders wrap to width after reading the full varint.
+    my $d_i32var   = sub ($b) {
         my ( undef, $rest ) = Proto3::Wire::decode_varint($b);
-        return ( Proto3::Wire::decode_zigzag32($b), $rest );
+        my ($v) = $decode_signed_varint->($b);
+        return ( $wrap_i32->($v), $rest );
+    };
+    my $d_u32var   = sub ($b) {
+        my ( $v, $rest ) = Proto3::Wire::decode_varint($b);
+        return ( $wrap_u32->($v), $rest );
+    };
+    my $d_zigzag32 = sub ($b) {
+        # sint32: an over-width varint truncates to 32 bits BEFORE zigzag
+        # decoding (protoc semantics). Mask the raw varint to its low 32 bits,
+        # then apply the zigzag transform in 32-bit space.
+        my ( $raw, $rest ) = Proto3::Wire::decode_varint($b);
+        my $u = $wrap_u32->($raw);
+        my $v = ( $u >> 1 ) ^ -( $u & 1 );
+        return ( $wrap_i32->($v), $rest );
     };
     my $d_zigzag64 = sub ($b) {
         my ( undef, $rest ) = Proto3::Wire::decode_varint($b);
@@ -152,9 +182,9 @@ my %SCALAR_TYPE = do {
     };
 
     (
-        int32    => { wire => $W_VARINT, encode => $signed,   decode => $d_signed,   is_num => 1, default => 0 },
+        int32    => { wire => $W_VARINT, encode => $signed,   decode => $d_i32var,   is_num => 1, default => 0 },
         int64    => { wire => $W_VARINT, encode => $signed,   decode => $d_signed,   is_num => 1, default => 0 },
-        uint32   => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        uint32   => { wire => $W_VARINT, encode => $varint,   decode => $d_u32var,   is_num => 1, default => 0 },
         uint64   => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
         bool     => { wire => $W_VARINT, encode => $bool,     decode => $d_bool,     is_num => 1, default => 0 },
         enum     => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },

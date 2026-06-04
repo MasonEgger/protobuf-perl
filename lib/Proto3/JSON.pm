@@ -207,7 +207,15 @@ class Proto3::JSON {
         return "$value" if $STRING_NUMBER_TYPE{$type};
         return $value ? JSON::PP::true : JSON::PP::false if $type eq 'bool';
         return MIME::Base64::encode_base64( $value, '' ) if $type eq 'bytes';
-        return $value + 0 if $NUMBER_TYPE{$type};
+        if ( $NUMBER_TYPE{$type} ) {
+            # A 32-bit int or float renders as a JSON number. A Math::BigInt
+            # would serialize as a blessed object (JSON::PP rejects it), so
+            # numify it to a native scalar first; the integer types are always
+            # in 32-bit range here, so numify is exact.
+            return ( ref $value && $value->can('numify') )
+                ? $value->numify
+                : $value + 0;
+        }
         return "$value";    # string
     }
 
