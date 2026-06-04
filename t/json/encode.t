@@ -330,4 +330,38 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
         '28.7: map encodes as a JSON object keyed by map key' );
 }
 
+# --- 28.7d: a bool map key emits as "true"/"false", not "1"/"0" ----------
+{
+    # map<bool,int32> flags = 1;  proto3 JSON spells bool keys true/false.
+    my $entry = Proto3::Schema::Message->new(
+        name         => 'FlagsEntry',
+        full_name    => 'pkg.BoolMapped.FlagsEntry',
+        is_map_entry => 1,
+        fields       => [
+            scalar_field( 'key',   1, 'bool' ),
+            scalar_field( 'value', 2, 'int32' ),
+        ],
+    );
+    my $message = Proto3::Schema::Message->new(
+        name      => 'BoolMapped',
+        full_name => 'pkg.BoolMapped',
+        fields    => [
+            Proto3::Schema::Field->new(
+                name      => 'flags',
+                number    => 1,
+                type      => 'message',
+                label     => 'repeated',
+                type_name => 'pkg.BoolMapped.FlagsEntry',
+                map_entry => 'pkg.BoolMapped.FlagsEntry',
+            ),
+        ],
+    );
+    my $codec = codec_for( messages => [ $message, $entry ] );
+
+    my $json = $codec->encode_json( 'pkg.BoolMapped', { flags => { 1 => 7, 0 => 9 } } );
+    my $got  = from_json($json);
+    is_deeply( $got->{flags}, { 'true' => 7, 'false' => 9 },
+        '28.7d: bool map keys emit as "true"/"false"' );
+}
+
 done_testing;

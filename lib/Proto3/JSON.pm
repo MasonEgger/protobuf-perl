@@ -327,15 +327,26 @@ class Proto3::JSON {
     method _encode_map ($field, $entries, $opts) {
         my $entry_name = $self->_field_type_name($field);
         my $entry      = $schema->message($entry_name);
+        my ($key_field) =
+            grep { $_->number == 1 } @{ $entry->fields };
         my ($value_field) =
             grep { $_->number == 2 } @{ $entry->fields };
+        my $key_type = $key_field ? $key_field->type : 'string';
 
         my %out;
         for my $key ( keys %$entries ) {
-            $out{"$key"} =
+            $out{ $self->_encode_map_key( $key_type, $key ) } =
                 $self->_encode_element( $value_field, $entries->{$key}, $opts );
         }
         return \%out;
+    }
+
+    # A proto3 map key is always a JSON object key (a string), but proto3 JSON
+    # spells a bool key as "true"/"false" (not "1"/"0") — integer keys are their
+    # decimal string, which is what stringification already gives.
+    method _encode_map_key ($key_type, $key) {
+        return ( $key ? 'true' : 'false' ) if $key_type eq 'bool';
+        return "$key";
     }
 
     # The fully-qualified type name for a message/map/enum field: the resolved
@@ -636,7 +647,9 @@ class Proto3::JSON {
     # handler turns any thrown exception into a parse_error, and a value of the
     # wrong type is precisely a type mismatch).
     method _reject_value ($field, $type, $value, $reason = 'type mismatch') {
-        my $shown = ref $value ? ref($value) : "'$value'";
+        my $shown = ref $value ? ref($value)
+            : defined $value   ? "'$value'"
+            :                    'null';
         Proto3::Exception::Codec::TypeMismatch->throw(
             message => sprintf(
                 'field %s expected %s, got %s (%s)',
