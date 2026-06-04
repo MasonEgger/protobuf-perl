@@ -117,6 +117,14 @@ class Proto3::JSON {
     field $codec :param;
     field $schema :param;
 
+    # Per-encode registry of float/double literals that must appear UNQUOTED and
+    # at full precision in the output. JSON::PP re-stringifies a native double at
+    # ~15 digits (dropping round-trip precision) and offers no raw-number
+    # injection, so the float encoder emits a unique sentinel string, records the
+    # exact literal here, and encode() substitutes the bare literal for the
+    # quoted sentinel after serialization.
+    field %float_literal;
+
     method codec  { $codec }
     method schema { $schema }
 
@@ -129,8 +137,15 @@ class Proto3::JSON {
     #   preserve_field_names use proto field names instead of camelCase json_name
     #   emit_defaults        include singular scalar fields at their type default
     method encode ($full_name, $values, %opts) {
+        %float_literal = ();
         my $structure = $self->_to_json_structure( $full_name, $values, \%opts );
-        return JSON::PP->new->canonical->encode($structure);
+        my $json = JSON::PP->new->canonical->encode($structure);
+        if (%float_literal) {
+            # Replace each "sentinel" (a quoted JSON string) with its bare
+            # full-precision numeric literal.
+            $json =~ s/"(\Q$_\E)"/$float_literal{$1}/g for keys %float_literal;
+        }
+        return $json;
     }
 
     # Build the JSON-shaped Perl structure (hashref/arrayref/scalar) for the
@@ -265,16 +280,45 @@ class Proto3::JSON {
         return "$value" if $STRING_NUMBER_TYPE{$type};
         return $value ? JSON::PP::true : JSON::PP::false if $type eq 'bool';
         return MIME::Base64::encode_base64( $value, '' ) if $type eq 'bytes';
+        return $self->_encode_float_json($value) if $type eq 'float' || $type eq 'double';
         if ( $NUMBER_TYPE{$type} ) {
-            # A 32-bit int or float renders as a JSON number. A Math::BigInt
-            # would serialize as a blessed object (JSON::PP rejects it), so
-            # numify it to a native scalar first; the integer types are always
-            # in 32-bit range here, so numify is exact.
+            # A 32-bit int renders as a JSON number. A Math::BigInt would
+            # serialize as a blessed object (JSON::PP rejects it), so numify it
+            # to a native scalar first; the integer types are always in 32-bit
+            # range here, so numify is exact.
             return ( ref $value && $value->can('numify') )
                 ? $value->numify
                 : $value + 0;
         }
         return "$value";    # string
+    }
+
+    # Render a float/double for proto3 JSON. Non-finite values use the spec's
+    # string forms ("Infinity", "-Infinity", "NaN"); a finite value is emitted as
+    # a JSON number with enough precision to round-trip (a raw number, wrapped so
+    # JSON::PP emits it unquoted). Perl's default stringification can drop digits
+    # (2.2250738585072014e-308 -> 2.2250738585072e-308), so format with %.17g and
+    # trim, which is exact for IEEE-754 doubles.
+    method _encode_float_json ($value) {
+        my $n = ( ref $value && $value->can('numify') ) ? $value->numify : $value + 0;
+        # Non-finite values use the spec's quoted string forms.
+        return 'NaN'       if $n != $n;             # NaN is the only value != itself
+        return 'Infinity'  if $n == 9**9**9;
+        return '-Infinity' if $n == -9**9**9;
+        # Shortest decimal that round-trips back to the same double (protoc's
+        # shortest-round-trip output). Register it as a bare literal under a
+        # unique sentinel; encode() swaps the quoted sentinel for the literal so
+        # JSON::PP cannot re-truncate the precision.
+        my $literal = sprintf '%.17g', $n;
+        for my $p ( 1 .. 17 ) {
+            my $s = sprintf "%.${p}g", $n;
+            if ( ( $s + 0 ) == $n ) { $literal = $s; last }
+        }
+        # Sentinel uses only characters JSON::PP emits verbatim (no escaping), so
+        # the post-serialization substitution can find the quoted token reliably.
+        my $sentinel = '@@FLOATLITERAL' . scalar(keys %float_literal) . '@@';
+        $float_literal{$sentinel} = $literal;
+        return $sentinel;
     }
 
     # Encode a map field as a JSON object: each map key becomes an object key
