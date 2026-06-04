@@ -93,6 +93,18 @@ my %SCALAR_TYPE = do {
     my $bool    = sub ($v) { Proto3::Wire::encode_varint( $v ? 1 : 0 ) };
     my $fixed32 = sub ($v) { Proto3::Wire::encode_fixed32($v) };
     my $fixed64 = sub ($v) { Proto3::Wire::encode_fixed64($v) };
+    # sfixed32/sfixed64 are signed: encode a negative as its two's complement so
+    # the unsigned fixed-width writer emits the right bytes.
+    my $sfixed32 = sub ($v) {
+        my $n = ref $v ? $v->numify : $v;
+        $n += 2**32 if $n < 0;
+        return Proto3::Wire::encode_fixed32($n);
+    };
+    my $sfixed64 = sub ($v) {
+        my $big = ( ref $v && $v->isa('Math::BigInt') ) ? $v->copy : Math::BigInt->new("$v");
+        $big->badd($TWO_64) if $big->is_neg;
+        return Proto3::Wire::encode_fixed64($big);
+    };
     my $float   = sub ($v) { Proto3::Wire::encode_float($v) };
     my $double  = sub ($v) { Proto3::Wire::encode_double($v) };
     # Length-delimited: a varint byte-count prefix, then the raw payload.
@@ -161,6 +173,19 @@ my %SCALAR_TYPE = do {
     };
     my $d_fixed32  = sub ($b) { Proto3::Wire::decode_fixed32($b) };
     my $d_fixed64  = sub ($b) { Proto3::Wire::decode_fixed64($b) };
+    # sfixed32/sfixed64 are SIGNED: the wire carries an unsigned little-endian
+    # value, but a high bit set means a negative two's-complement integer.
+    my $d_sfixed32 = sub ($b) {
+        my ( $u, $rest ) = Proto3::Wire::decode_fixed32($b);
+        $u -= 2**32 if $u >= 2**31;
+        return ( $u, $rest );
+    };
+    my $d_sfixed64 = sub ($b) {
+        my ( $u, $rest ) = Proto3::Wire::decode_fixed64($b);
+        my $big = ref $u ? $u->copy : Math::BigInt->new("$u");
+        $big->bsub($TWO_64) if $big->bcmp($TWO_63) >= 0;
+        return ( $normalize_int->($big), $rest );
+    };
     my $d_float    = sub ($b) { Proto3::Wire::decode_float($b) };
     my $d_double   = sub ($b) { Proto3::Wire::decode_double($b) };
     # Length-delimited: a varint byte-count prefix, then that many raw bytes.
@@ -191,10 +216,10 @@ my %SCALAR_TYPE = do {
         sint32   => { wire => $W_VARINT, encode => $zigzag32, decode => $d_zigzag32, is_num => 1, default => 0 },
         sint64   => { wire => $W_VARINT, encode => $zigzag64, decode => $d_zigzag64, is_num => 1, default => 0 },
         fixed32  => { wire => $W_I32,    encode => $fixed32,  decode => $d_fixed32,  is_num => 1, default => 0 },
-        sfixed32 => { wire => $W_I32,    encode => $fixed32,  decode => $d_fixed32,  is_num => 1, default => 0 },
+        sfixed32 => { wire => $W_I32,    encode => $sfixed32, decode => $d_sfixed32, is_num => 1, default => 0 },
         float    => { wire => $W_I32,    encode => $float,    decode => $d_float,    is_num => 1, default => 0 },
         fixed64  => { wire => $W_I64,    encode => $fixed64,  decode => $d_fixed64,  is_num => 1, default => 0 },
-        sfixed64 => { wire => $W_I64,    encode => $fixed64,  decode => $d_fixed64,  is_num => 1, default => 0 },
+        sfixed64 => { wire => $W_I64,    encode => $sfixed64, decode => $d_sfixed64, is_num => 1, default => 0 },
         double   => { wire => $W_I64,    encode => $double,   decode => $d_double,   is_num => 1, default => 0 },
         string   => { wire => $W_LEN,    encode => $str,      decode => $d_str,      is_num => 0, default => '' },
         bytes    => { wire => $W_LEN,    encode => $len,      decode => $d_len,      is_num => 0, default => '' },
