@@ -77,8 +77,13 @@ ok( decode_err( 'int32', '{"f": " 1"}' ),
     'int32 string with leading space rejected (Int32FieldLeadingSpace)' );
 ok( decode_err( 'int32', '{"f": "1 "}' ),
     'int32 string with trailing space rejected (Int32FieldTrailingSpace)' );
-ok( decode_err( 'int32', '{"f": "1e5"}' ),
-    'int32 non-integral exponent string rejected' );
+# protoc ACCEPTS a quoted exponential string that denotes an EXACT integer
+# ("1e5" -> 100000), per the v34 conformance suite
+# (Int32FieldQuotedExponentialValue); only a NON-integral one is rejected.
+ok( !decode_err( 'int32', '{"f": "1e5"}' ),
+    'int32 quoted exact-integer exponent "1e5" accepted' );
+ok( decode_err( 'int32', '{"f": "1.5e0"}' ),
+    'int32 non-integral exponent string "1.5e0" rejected' );
 ok( decode_err( 'int32', '{"f": ""}' ),
     'int32 empty string rejected' );
 

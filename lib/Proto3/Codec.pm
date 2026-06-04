@@ -363,11 +363,13 @@ class Proto3::Codec {
         $self->_assert_value_type( $field, $spec, $value );
 
         # A field with explicit presence is always written when set, even at the
-        # type default: that covers both `optional` fields and oneof members
-        # (presence in a oneof is "this member is the one set", independent of
-        # the value). Implicit-presence singular scalars at their default are
-        # omitted from the wire.
-        if ( !$self->_has_explicit_presence($field)
+        # type default: that covers proto2/editions explicit fields, `optional`
+        # fields, and oneof members (presence in a oneof is "this member is the
+        # one set", independent of the value). Only implicit-presence singular
+        # scalars at their default are omitted from the wire. Presence is
+        # feature-driven via the resolved Field (has_presence), which reproduces
+        # the old `optional`/oneof behavior for proto3.
+        if ( !$field->has_presence
             && $self->_is_default_value( $spec, $value ) )
         {
             return '';
@@ -377,27 +379,21 @@ class Proto3::Codec {
         return $tag . $spec->{encode}->($value);
     }
 
-    # True when a field uses explicit-presence serialization: it is declared
-    # `optional`, or it is a member of a oneof. Such a field is serialized
-    # whenever it is set, even when its value equals the type default.
-    method _has_explicit_presence ($field) {
-        return 1 if $field->label eq 'optional';
-        return 1 if defined $field->oneof_index;
-        return 0;
-    }
-
     # Encode a repeated field. $elements is the field's arrayref value.
     #
-    # An empty list is omitted entirely. Packable scalars (numeric/bool/enum)
-    # are emitted as a SINGLE length-delimited block of concatenated element
-    # payloads (proto3 packed-by-default). String/bytes/message elements are not
-    # packable: each is emitted as its own tag-prefixed entry, in list order.
+    # An empty list is omitted entirely. A packable scalar repeated field is
+    # emitted PACKED — a SINGLE length-delimited block of concatenated element
+    # payloads — iff the field's resolved features select packed encoding
+    # ($field->is_packed: proto3/edition2023 default packed, proto2/editions
+    # default expanded, explicit [packed=...] override wins). Otherwise the
+    # field is EXPANDED: one tag-prefixed entry per element. String/bytes/message
+    # elements are never packable and always emit one entry per element.
     method _encode_repeated ($field, $elements) {
         return '' unless @$elements;
 
         my $spec = $SCALAR_TYPE{ $field->type };
 
-        if ( $spec && $self->_is_packable( $field->type ) ) {
+        if ( $spec && $self->_encode_packed($field) ) {
             my $payload = '';
             for my $element (@$elements) {
                 $self->_assert_value_type( $field, $spec, $element );
@@ -418,6 +414,27 @@ class Proto3::Codec {
             $out .= $self->_encode_repeated_element( $field, $spec, $element );
         }
         return $out;
+    }
+
+    # Decide whether a repeated packable scalar field encodes PACKED. When the
+    # field's features are RESOLVED (a real Schema::Features installed), defer to
+    # the feature-driven $field->is_packed: proto3/edition2023 default packed,
+    # proto2/editions default expanded, an explicit [packed=...] override wins.
+    # When features are UNRESOLVED (a hand-built field still carrying the raw
+    # override hashref), fall back to the legacy proto3 rule — pack every
+    # packable scalar — so directly-constructed proto3 schemas keep packing by
+    # default without a resolve pass.
+    method _encode_packed ($field) {
+        return $field->is_packed if $self->_features_resolved($field);
+        return $self->_is_packable( $field->type );
+    }
+
+    # True when a field carries a resolved Schema::Features (vs. the raw override
+    # hashref a freshly-constructed, un-resolved field still holds).
+    method _features_resolved ($field) {
+        my $features = $field->features;
+        return Scalar::Util::blessed($features)
+            && $features->isa('Proto3::Schema::Features');
     }
 
     # Encode one element of a non-packed repeated field (string/bytes scalar, or
@@ -509,6 +526,23 @@ class Proto3::Codec {
         my $spec = $SCALAR_TYPE{$type};
         return 0 unless $spec;
         return $spec->{is_num} ? 1 : 0;
+    }
+
+    # True when an enum field is CLOSED (proto2/editions-proto2) and the decoded
+    # numeric $value is not one of the enum's declared enumerators. A closed
+    # enum's unknown value is routed to the unknown-field set, never stored as
+    # the field's value (protoc closed-enum semantics). An open enum, or an enum
+    # whose schema is unresolved (no type_ref), always returns false so the
+    # value stays in-field — preserving today's proto3 behavior.
+    method _is_unknown_closed_enum ($field, $value) {
+        my $enum = $field->type_ref or return 0;
+        return 0 unless $enum->can('closed') && $enum->closed;
+
+        my $n = ref $value ? $value->numify : $value;
+        for my $v ( @{ $enum->values } ) {
+            return 0 if $v->{number} == $n;
+        }
+        return 1;
     }
 
     # True when $value is the proto3 implicit-presence default for the scalar
@@ -621,13 +655,14 @@ class Proto3::Codec {
             ( my $field_number, my $wire_type, $rest ) =
                 Proto3::Wire::Tag::decode_tag($rest);
 
-            # A field number of 0 is illegal on the wire; proto3 requires decode
-            # to fail rather than silently accept it as an unknown field.
-            if ( $field_number == 0 ) {
-                Proto3::Exception::Wire->throw(
-                    message => 'illegal field number 0 on the wire',
-                );
-            }
+            # Validate the tag: a field number of 0 (illegal), a field number
+            # above 2**29-1, a non-existent wire type (6 or 7), and an overlong
+            # tag varint are all malformed and MUST fail the parse rather than be
+            # accepted or skipped. (The tag varint occupies the leading bytes of
+            # the record; comparing how many were consumed against the canonical
+            # encoding of the same (field, wire) pair detects an overlong tag.)
+            $self->_validate_tag( $field_number, $wire_type,
+                length($record_start) - length($rest) );
 
             my $field = $field_by_number{$field_number};
 
@@ -702,6 +737,23 @@ class Proto3::Codec {
             }
 
             ( my $value, $rest ) = $spec->{decode}->($rest);
+
+            # Closed-enum (proto2/editions-proto2) unknown value: a number that
+            # is not a declared enumerator must NOT be stored as the field's
+            # value — the field reads as unset. Route the whole record (tag +
+            # varint) to the unknown-field set so it still round-trips on
+            # re-encode (when preservation is on), exactly like protoc. Open
+            # enums (proto3/editions-proto3) keep the unknown value in-field.
+            if ( $field->is_enum
+                && $self->_is_unknown_closed_enum( $field, $value ) )
+            {
+                if ($preserve_unknown_fields) {
+                    my $consumed = length($record_start) - length($rest);
+                    $unknown .= substr( $record_start, 0, $consumed );
+                }
+                next;
+            }
+
             $result{ $field->name } = $value;    # last value wins
             $self->_clear_oneof_siblings( $field, \%result, \%oneof_members );
         }
@@ -713,6 +765,60 @@ class Proto3::Codec {
         $result{$UNKNOWN_FIELDS_KEY} = $unknown if length $unknown;
 
         return \%result;
+    }
+
+    # Reject a malformed tag. A wire-format tag MUST carry a field number in
+    # 1 .. 2**29-1, one of the six defined wire types (0,1,2,3,4,5 — wire types 6
+    # and 7 do not exist), and be encoded with no more bytes than the (field,
+    # wire) pair requires. $consumed is the number of bytes the tag varint
+    # occupied on the wire; an overlong encoding (more bytes than the canonical
+    # form) is malformed and must fail the parse. Raises a Proto3::Exception::Wire
+    # subclass on any violation.
+    method _validate_tag ($field_number, $wire_type, $consumed) {
+        # Field number 0 is illegal; proto3 requires decode to fail rather than
+        # silently accept it as an unknown field.
+        if ( $field_number == 0 ) {
+            Proto3::Exception::Wire->throw(
+                message => 'illegal field number 0 on the wire',
+            );
+        }
+
+        # Field numbers run 1 .. 2**29-1. A larger value (e.g. a BadTag vector
+        # whose field number overflows) is malformed.
+        my $max = ( 1 << 29 ) - 1;
+        my $too_high =
+            ref $field_number
+            ? $field_number > Math::BigInt->new($max)
+            : $field_number > $max;
+        if ($too_high) {
+            Proto3::Exception::Wire->throw(
+                message => "field number $field_number exceeds the proto3 "
+                    . "maximum of $max",
+            );
+        }
+
+        # Wire types 6 and 7 do not exist in the protobuf wire format; a tag
+        # carrying one is malformed. (Types 3/4 are SGROUP/EGROUP and remain
+        # valid.)
+        if ( $wire_type == 6 || $wire_type == 7 ) {
+            Proto3::Exception::Wire::InvalidWireType->throw(
+                message => "wire type $wire_type does not exist",
+            );
+        }
+
+        # An overlong tag varint carries continuation bytes beyond what the
+        # (field, wire) pair needs. The canonical encoding is the tag re-encoded;
+        # if the wire form consumed more bytes, it is malformed.
+        my $tag = ref $field_number
+            ? Math::BigInt->new($field_number)->blsft(3)->bior($wire_type)
+            : ( $field_number << 3 ) | $wire_type;
+        my $canonical = length Proto3::Wire::Varint::encode_varint($tag);
+        if ( $consumed > $canonical ) {
+            Proto3::Exception::Wire->throw(
+                message => "overlong tag varint ($consumed bytes, "
+                    . "canonical is $canonical)",
+            );
+        }
     }
 
     # Decode one wire occurrence of a repeated field, appending its element(s) to
@@ -813,10 +919,14 @@ class Proto3::Codec {
         return @values;
     }
 
-    # Fill in proto3 defaults for declared fields that did not appear on the
-    # wire. A repeated field defaults to the empty list. An implicit-presence
-    # singular scalar defaults to its proto3 zero value; explicit-presence
-    # (`optional`) fields and singular message fields are left absent.
+    # Fill in defaults for declared fields that did not appear on the wire. A
+    # repeated field defaults to the empty list. An implicit-presence singular
+    # scalar defaults to its type-zero value; an explicit-presence field (proto2/
+    # editions explicit, `optional`, or a oneof member) is left ABSENT — a hazzer
+    # field that was never set must read as unset, not as its zero value. Singular
+    # message fields are always left absent (messages have no default value).
+    # Presence is feature-driven via the resolved Field (has_presence), which
+    # reproduces today's proto3 default-fill behavior.
     method _apply_defaults ($message, $result) {
         for my $field ( @{ $message->fields } ) {
             next if exists $result->{ $field->name };
@@ -831,13 +941,12 @@ class Proto3::Codec {
                 next;
             }
 
-            next if $field->label eq 'optional';
             next if $field->is_message;
 
-            # A oneof member has explicit presence: if it was not on the wire it
-            # stays absent (filling it with a default would set every member of
-            # the oneof at once).
-            next if defined $field->oneof_index;
+            # Only implicit-presence fields get default-filled; any explicit
+            # presence (proto2/editions explicit, `optional`, oneof member)
+            # stays absent so the field reads as unset.
+            next if $field->has_presence;
 
             my $spec = $SCALAR_TYPE{ $field->type };
             next unless $spec;

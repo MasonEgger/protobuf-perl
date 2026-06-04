@@ -40,6 +40,13 @@ class Proto3::WKT::Any {
         my $type_url = $value->{type_url} // '';
         my $bytes    = $value->{value}    // '';
 
+        # An empty Any (no type_url) is valid and serializes to the empty JSON
+        # object {} — the round-trip partner of from_json_value({}) accepting an
+        # empty object as an empty Any (conformance AnyWithNoType).
+        if ( $type_url eq '' ) {
+            return {};
+        }
+
         my $full_name = _full_name_from_url($type_url);
         my $inner     = $codec->decode( $full_name, $bytes );
         my $structure = $json->json_structure_for( $full_name, $inner );
@@ -58,7 +65,20 @@ class Proto3::WKT::Any {
     # ordinary message), JSON-decode it to the inner message's codec shape, and
     # binary-encode that to the stored bytes. A missing "@type" raises JSON::WKT.
     sub from_json_value ( $class, $json_value, $codec, $json ) {
-        if ( ref $json_value ne 'HASH' || !defined $json_value->{'@type'} ) {
+        if ( ref $json_value ne 'HASH' ) {
+            Proto3::Exception::JSON::WKT->throw(
+                message => 'Any JSON value must be an object',
+            );
+        }
+
+        # An empty JSON object {} is a VALID empty Any (no type_url, no value),
+        # per the proto3 JSON spec and the conformance suite (AnyWithNoType).
+        # Only a non-empty object is required to carry an "@type".
+        if ( !%$json_value ) {
+            return { type_url => '', value => '' };
+        }
+
+        if ( !defined $json_value->{'@type'} ) {
             Proto3::Exception::JSON::WKT->throw(
                 message => 'Any JSON value must be an object with "@type"',
             );

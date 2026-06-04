@@ -65,6 +65,17 @@ class Proto3::WKT::Timestamp {
             );
         }
 
+        # A Timestamp's nanos must be in 0 .. 999999999 — it always counts
+        # forward from the whole second, so a negative or oversized nanos is
+        # invalid and protoc refuses to serialize it. Reject rather than emit a
+        # malformed RFC3339 fraction.
+        if ( $nanos < 0 || $nanos > 999_999_999 ) {
+            Proto3::Exception::JSON::WKT->throw(
+                message =>
+                    "Timestamp nanos $nanos out of range [0, 999999999]",
+            );
+        }
+
         my $prefix   = Proto3::WKT::Util::rfc3339_prefix($seconds);
         my $fraction = Proto3::WKT::Util::fraction_suffix($nanos);
         return "$prefix${fraction}Z";

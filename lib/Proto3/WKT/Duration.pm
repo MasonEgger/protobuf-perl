@@ -61,6 +61,25 @@ class Proto3::WKT::Duration {
             );
         }
 
+        # A Duration's nanos magnitude must be 0 .. 999999999, and its sign must
+        # agree with the seconds sign: a non-zero seconds and a non-zero nanos of
+        # the opposite sign is invalid, as is |nanos| > 999999999. protoc refuses
+        # to serialize such a value, so reject rather than emit a bad string.
+        if ( $nanos > 999_999_999 || $nanos < -999_999_999 ) {
+            Proto3::Exception::JSON::WKT->throw(
+                message =>
+                    "Duration nanos $nanos out of range [+/-999999999]",
+            );
+        }
+        if (   ( $seconds > 0 && $nanos < 0 )
+            || ( $seconds < 0 && $nanos > 0 ) )
+        {
+            Proto3::Exception::JSON::WKT->throw(
+                message =>
+                    "Duration nanos $nanos sign disagrees with seconds $seconds",
+            );
+        }
+
         my $negative = ( $seconds < 0 || $nanos < 0 ) ? 1 : 0;
         my $abs_seconds  = abs $seconds;
         my $abs_nanos    = abs $nanos;

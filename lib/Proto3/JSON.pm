@@ -86,6 +86,49 @@ my $is_integer_string = do {
     };
 };
 
+# Resolve a quoted numeric string in exponential or decimal-point form to its
+# exact integer digit string, or undef when the string is malformed or does not
+# denote an exact integer. protoc accepts a quoted int field value like "1e5"
+# (= 100000) or "1.5e1" (= 15) but rejects a non-integral magnitude ("1.5e0").
+# The mantissa digits are shifted by the decimal exponent using Math::BigInt so
+# the result is exact for any 64-bit field value. Pre-class lexical / do{}
+# wrapper for the same feature 'class' scoping and parse reasons as above.
+my $exact_integer_from_exponential = do {
+    sub ($text) {
+        my ( $sign, $int, $frac, $exp ) = $text =~ m{
+            \A ([+-]?) ([0-9]+) (?: \. ([0-9]+) )? [eE] ([+-]?[0-9]+) \z
+        }x;
+        # Also accept a plain decimal-point form with no exponent ("15.0").
+        if ( !defined $int ) {
+            ( $sign, $int, $frac ) = $text =~ m{
+                \A ([+-]?) ([0-9]+) \. ([0-9]+) \z
+            }x;
+            $exp = 0;
+        }
+        return undef unless defined $int;
+
+        $frac //= '';
+        my $mantissa = Math::BigInt->new("$int$frac");
+        # Each fractional digit divides the mantissa by 10; the exponent
+        # multiplies it. Net power of ten applied to the integer mantissa:
+        my $scale = $exp - length $frac;
+
+        my $magnitude;
+        if ( $scale >= 0 ) {
+            $magnitude = $mantissa->bmul( Math::BigInt->new(10)->bpow($scale) );
+        }
+        else {
+            my $divisor = Math::BigInt->new(10)->bpow( -$scale );
+            my ( $q, $r ) = $mantissa->bdiv($divisor);
+            return undef unless $r->is_zero;    # not an exact integer
+            $magnitude = $q;
+        }
+
+        $magnitude->bneg if $sign eq '-' && !$magnitude->is_zero;
+        return $magnitude->bstr;
+    };
+};
+
 # Compute the default json_name: camelCase of a snake_case field name (data_blob
 # -> dataBlob). Mirrors the parser's _camel_case so a directly-built schema (no
 # json_name set) produces the same keys as a parsed one. A pre-class lexical
@@ -592,9 +635,19 @@ class Proto3::JSON {
     method _decode_integer ($field, $type, $value, $kind) {
         my $digits;
         if ( $kind eq 'string' ) {
-            $self->_reject_value( $field, $type, $value )
-                unless $is_integer_string->("$value");
-            $digits = "$value";
+            my $text = "$value";
+            if ( $is_integer_string->($text) ) {
+                $digits = $text;
+            }
+            else {
+                # protoc also accepts a quoted integer in exponential or
+                # decimal-point form ("1e5" -> 100000, "1.5e1" -> 15) PROVIDED
+                # it denotes an EXACT integer. Resolve such a string to its
+                # integer digits; reject anything non-integral or malformed.
+                $digits = $exact_integer_from_exponential->($text);
+                $self->_reject_value( $field, $type, $value )
+                    unless defined $digits;
+            }
         }
         elsif ( $kind eq 'number' ) {
             # A JSON number must be integral: no fractional or exponent part
@@ -738,8 +791,12 @@ class Proto3::JSON {
 
     # True when $full_name has a special (non-plain-object) JSON form, so an Any
     # wrapping it must carry the form under a reserved "value" key rather than
-    # inlining the wrapped message's fields beside "@type".
+    # inlining the wrapped message's fields beside "@type". google.protobuf.Empty
+    # is excluded: its JSON form is the plain empty object {}, identical to an
+    # ordinary fieldless message, so an Any wrapping it inlines (yielding just
+    # "@type") rather than carrying a "value":{} wrapper protoc never emits.
     method wkt_has_special_form ($full_name) {
+        return 0 if $full_name eq 'google.protobuf.Empty';
         return $self->_is_wkt($full_name);
     }
 
