@@ -260,19 +260,39 @@ Direct lessons baked into this spec:
 - ✅ Modern Perl (5.38+ with `feature 'class'`).
 - ✅ MIT license.
 
-### Non-goals (v1)
+### Scope update (post-v1)
 
-- ❌ Proto2 (`syntax = "proto2";`) — separate effort if ever needed.
+The original v1 spec scoped this library to **proto3 only**. That scope has
+since been extended: the library now passes the **full Google conformance
+suite at protobuf v34** — proto2, proto3, and editions 2023, both Required
+and Recommended (`--enforce_recommended`), with zero failures. The
+conformance testee loads a v34 `FileDescriptorSet` covering all five test
+message types, and the codec/JSON/schema layers model the syntax/edition
+dimension via a resolved FeatureSet (presence, enum openness, repeated
+encoding, message encoding, UTF-8 validation). See `V34-PLAN.md` for the
+design. The "proto3 only" framing below is retained for historical context;
+the brand name `Proto3` is kept (cf. `Test2`, `JSON::PP`).
+
+### Non-goals (still out of scope)
+
 - ❌ gRPC protocol — out of scope; we encode/decode messages, the
   transport is for another library.
 - ❌ Protobuf reflection API (the runtime descriptor introspection that
   Python `descriptor_pool` exposes). Schema introspection is exposed
   more narrowly via our schema model.
-- ❌ Editions syntax (`edition = "2023";`). proto3 only.
-- ❌ Custom options beyond what the conformance suite requires for
-  proto3.
+- ❌ The `edition_unstable` test edition (gated behind
+  `--maximum_edition`; not exercised by a default conformance run).
+- ❌ `.proto` source parsing for proto2/editions in `Proto3::Parser` — the
+  conformance path uses the descriptor set, not the source parser; proto2/
+  editions source parsing is deferred until a consumer needs codegen for it.
 - ❌ Reflection-based debugging tools (`TextFormat` etc.) — interesting
   but defer.
+
+### Former non-goals, now SUPPORTED
+
+- ✅ Proto2 (`syntax = "proto2";`) — explicit presence, required fields,
+  defaults, groups, extensions, MessageSet, closed enums, expanded repeated.
+- ✅ Editions (`edition = "2023";`) via the FeatureSet model.
 
 ---
 

@@ -13,18 +13,23 @@ __END__
 
 =head1 NAME
 
-Proto3 - A pure-Perl proto3 implementation
+Proto3 - A pure-Perl Protocol Buffers implementation
 
 =head1 DESCRIPTION
 
-Proto3 is a pure-Perl implementation of Protocol Buffers version 3 (proto3):
-wire codec, schema model, .proto parser, JSON mapping, well-known types, and
-ahead-of-time class generation. This top-level package exposes the
-distribution version; the functional pieces live in the C<Proto3::*>
-namespace.
+Proto3 is a pure-Perl implementation of Protocol Buffers: wire codec, schema
+model, C<.proto> parser, JSON mapping, well-known types, and ahead-of-time
+class generation. This top-level package exposes the distribution version; the
+functional pieces live in the C<Proto3::*> namespace.
 
-This distribution is pre-alpha. See C<spec.md> in the repository root for the
-full specification.
+Despite the name, the implementation is not limited to proto3: it passes the
+full Google conformance suite at protobuf v34 across B<proto2>, B<proto3>, and
+B<editions 2023> (Required and Recommended), modelling the syntax/edition
+dimension through a resolved feature set (presence, enum openness, repeated
+encoding, message encoding, UTF-8 validation). The C<Proto3> name is kept as a
+brand, in the spirit of C<Test2> and C<JSON::PP>.
+
+See C<spec.md> and C<V34-PLAN.md> in the repository root for the design.
 
 =head1 VERSION
 
