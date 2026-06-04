@@ -4,6 +4,9 @@ use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
 
+use JSON::PP ();
+use MIME::Base64 ();
+
 use Proto3::Schema::Message;
 use Proto3::Schema::Field;
 use Proto3::Exception;
@@ -53,19 +56,35 @@ class Proto3::WKT::Wrappers {
     # to_json_value($full_name, $value) -> the bare inner value.
     #
     # A wrapper renders in JSON as its inner value directly: Int32Value(42)
-    # becomes 42, NOT { "value": 42 } (proto3 JSON spec, §4.8). The same path
-    # serves all nine wrapper types; an absent `value` defaults per proto3.
+    # becomes 42, NOT { "value": 42 } (proto3 JSON spec, §4.8). The inner value
+    # is in the codec representation, so bool (a native 1/0) becomes a JSON
+    # boolean and bytes (raw octets) become base64 — the same scalar mapping the
+    # ordinary JSON encoder applies. Every other type passes through unchanged.
     sub to_json_value ( $class, $full_name, $value ) {
         _assert_wrapper($full_name);
-        return $value->{value};
+        my $inner = $value->{value};
+        return $inner unless defined $inner;
+
+        my $type = $WRAPPER_TYPE{$full_name};
+        return $inner ? JSON::PP::true : JSON::PP::false if $type eq 'bool';
+        return MIME::Base64::encode_base64( $inner, '' ) if $type eq 'bytes';
+        return $inner;
     }
 
     # from_json_value($full_name, $json) -> hashref { value => $json }.
     #
-    # Wrap the bare JSON value back into the { value => ... } codec form. The
-    # same path serves all nine wrapper types.
+    # Map the bare JSON value back into the { value => ... } codec form. bool
+    # (a JSON::PP::Boolean) is normalized to a native 1/0 and bytes (base64) are
+    # decoded to raw octets, matching the codec representation the binary encoder
+    # expects; every other type passes through unchanged.
     sub from_json_value ( $class, $full_name, $json ) {
         _assert_wrapper($full_name);
+        return { value => $json } unless defined $json;
+
+        my $type = $WRAPPER_TYPE{$full_name};
+        return { value => ( $json ? 1 : 0 ) } if $type eq 'bool';
+        return { value => MIME::Base64::decode_base64("$json") }
+            if $type eq 'bytes';
         return { value => $json };
     }
 

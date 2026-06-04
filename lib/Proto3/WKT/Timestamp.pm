@@ -9,6 +9,14 @@ use Proto3::Schema::Field;
 use Proto3::WKT::Util;
 use Proto3::Exception;
 
+# Inclusive epoch-seconds range the proto3 Timestamp type allows: from
+# 0001-01-01T00:00:00Z (-62135596800) through 9999-12-31T23:59:59Z
+# (253402300799). protoc rejects any Timestamp outside years 0001..9999, on
+# both JSON input and protobuf-to-JSON output. Pre-class lexicals so the class
+# methods read them without the feature 'class' package-scoping trap.
+my $TIMESTAMP_MIN_SECONDS = -62_135_596_800;
+my $TIMESTAMP_MAX_SECONDS = 253_402_300_799;
+
 class Proto3::WKT::Timestamp {
 
     # The canonical Schema::Message for google.protobuf.Timestamp: an int64
@@ -46,6 +54,17 @@ class Proto3::WKT::Timestamp {
         my $seconds = $value->{seconds} // 0;
         my $nanos   = $value->{nanos}   // 0;
 
+        # protoc refuses to serialize a Timestamp outside years 0001..9999, so a
+        # protobuf-input-then-JSON-output of such a value must be an error too.
+        if (   $seconds < $TIMESTAMP_MIN_SECONDS
+            || $seconds > $TIMESTAMP_MAX_SECONDS )
+        {
+            Proto3::Exception::JSON::WKT->throw(
+                message =>
+                    "Timestamp seconds $seconds out of range [0001-01-01, 9999-12-31]",
+            );
+        }
+
         my $prefix   = Proto3::WKT::Util::rfc3339_prefix($seconds);
         my $fraction = Proto3::WKT::Util::fraction_suffix($nanos);
         return "$prefix${fraction}Z";
@@ -63,10 +82,14 @@ class Proto3::WKT::Timestamp {
             );
         }
 
-        my ( $prefix, $frac ) = $string =~ m{
+        # The zone is either a literal 'Z' (UTC) or a numeric offset
+        # '(+|-)HH:MM'. A numeric offset is subtracted from the local wall-clock
+        # to recover the UTC instant (protoc stores the UTC seconds and re-emits
+        # with a trailing 'Z').
+        my ( $prefix, $frac, $zone ) = $string =~ m{
             \A ( \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} )
                (?: \. ([0-9]+) )?
-               Z \z
+               ( Z | [+-]\d{2}:\d{2} ) \z
         }x;
 
         if ( !defined $prefix ) {
@@ -76,6 +99,21 @@ class Proto3::WKT::Timestamp {
         }
 
         my $seconds = Proto3::WKT::Util::parse_rfc3339_prefix($prefix);
+        if ( $zone ne 'Z' ) {
+            my ( $sign, $oh, $om ) = $zone =~ m{\A ([+-]) (\d{2}) : (\d{2}) \z}x;
+            my $offset = ( $oh * 3600 + $om * 60 ) * ( $sign eq '-' ? -1 : 1 );
+            $seconds -= $offset;
+        }
+
+        if (   $seconds < $TIMESTAMP_MIN_SECONDS
+            || $seconds > $TIMESTAMP_MAX_SECONDS )
+        {
+            Proto3::Exception::JSON::WKT->throw(
+                message =>
+                    "Timestamp '$string' is outside years 0001..9999",
+            );
+        }
+
         my $nanos =
             defined $frac ? Proto3::WKT::Util::parse_fraction($frac) : 0;
         return { seconds => $seconds, nanos => $nanos };

@@ -54,8 +54,16 @@ class Proto3::Conformance {
     }
 
     # codec() / json() -> cached handlers built over schema().
+    # The testee must round-trip unknown fields: a protobuf->protobuf request
+    # carrying a field the test message does not declare has to be re-emitted
+    # verbatim (conformance UnknownVarint and friends). Turn on
+    # preserve_unknown_fields so decode retains those bytes and encode replays
+    # them after the known fields.
     sub codec ($class) {
-        $CODEC //= Proto3::Codec->new( schema => $class->schema );
+        $CODEC //= Proto3::Codec->new(
+            schema                  => $class->schema,
+            preserve_unknown_fields => 1,
+        );
         return $CODEC;
     }
 

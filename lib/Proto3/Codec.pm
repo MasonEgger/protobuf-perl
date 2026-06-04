@@ -85,8 +85,10 @@ my %SCALAR_TYPE = do {
     my $W_I32    = Proto3::Wire::Tag::WIRE_I32();
 
     my $varint  = sub ($v) { Proto3::Wire::encode_varint($v) };
-    # int32/int64 use signed-varint semantics: negatives become the 64-bit
-    # two's complement, matching protoc. uint32/uint64/bool/enum stay unsigned.
+    # int32/int64/enum use signed-varint semantics: negatives become the 64-bit
+    # two's complement, matching protoc. An enum value is a signed 32-bit int,
+    # so a negative enumerator encodes (and the over-width varint wraps) exactly
+    # like int32. uint32/uint64/bool stay unsigned.
     my $signed  = sub ($v) { $encode_signed_varint->($v) };
     my $zigzag32 = sub ($v) { Proto3::Wire::encode_zigzag32($v) };
     my $zigzag64 = sub ($v) { Proto3::Wire::encode_zigzag64($v) };
@@ -212,7 +214,7 @@ my %SCALAR_TYPE = do {
         uint32   => { wire => $W_VARINT, encode => $varint,   decode => $d_u32var,   is_num => 1, default => 0 },
         uint64   => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
         bool     => { wire => $W_VARINT, encode => $bool,     decode => $d_bool,     is_num => 1, default => 0 },
-        enum     => { wire => $W_VARINT, encode => $varint,   decode => $d_varint,   is_num => 1, default => 0 },
+        enum     => { wire => $W_VARINT, encode => $signed,   decode => $d_i32var,   is_num => 1, default => 0 },
         sint32   => { wire => $W_VARINT, encode => $zigzag32, decode => $d_zigzag32, is_num => 1, default => 0 },
         sint64   => { wire => $W_VARINT, encode => $zigzag64, decode => $d_zigzag64, is_num => 1, default => 0 },
         fixed32  => { wire => $W_I32,    encode => $fixed32,  decode => $d_fixed32,  is_num => 1, default => 0 },
@@ -604,6 +606,11 @@ class Proto3::Codec {
         }
 
         my %result;
+        # Raw LEN-payload bytes accumulated per singular message field, so
+        # repeated occurrences of the same field merge by wire-byte
+        # concatenation (proto3 message-merge semantics). Cleared for a field
+        # whenever a oneof sibling supersedes it.
+        my %message_bytes;
         my $unknown = '';    # accumulated raw bytes of unknown fields, in order
         my $rest = $bytes;
         while ( length $rest ) {
@@ -613,6 +620,14 @@ class Proto3::Codec {
 
             ( my $field_number, my $wire_type, $rest ) =
                 Proto3::Wire::Tag::decode_tag($rest);
+
+            # A field number of 0 is illegal on the wire; proto3 requires decode
+            # to fail rather than silently accept it as an unknown field.
+            if ( $field_number == 0 ) {
+                Proto3::Exception::Wire->throw(
+                    message => 'illegal field number 0 on the wire',
+                );
+            }
 
             my $field = $field_by_number{$field_number};
 
@@ -642,14 +657,31 @@ class Proto3::Codec {
 
             # Singular embedded message: decode recursively via the single
             # shared embedded-message reader (the same path that handles map
-            # entries and repeated-message elements). Last occurrence wins.
+            # entries and repeated-message elements). When the SAME singular
+            # message field appears more than once, proto3 MERGES the
+            # occurrences (later scalars overwrite, submessages merge)
+            # rather than replacing — so an earlier occurrence's sub-fields are
+            # not lost. We merge at the WIRE level: concatenate the raw LEN
+            # payload bytes across occurrences and decode the concatenation,
+            # which is exactly protoc's merge semantics and sidesteps the
+            # default-fill problem a decoded-hashref merge would hit (a later
+            # occurrence's defaulted-to-0 sub-fields must not clobber real
+            # values from an earlier one). For a oneof member, clearing the
+            # siblings happens BEFORE we fold in this occurrence so a merge only
+            # ever accumulates bytes belonging to this member, never a different
+            # (earlier-set) member of the same oneof.
             if ( $field->is_message ) {
-                ( my $value, $rest ) = $self->_decode_embedded_message(
-                    $self->_field_message_name($field), $rest,
-                );
-                $result{ $field->name } = $value;
+                ( my $block, $rest ) = $self->_read_packed_block($rest);
                 $self->_clear_oneof_siblings( $field, \%result,
-                    \%oneof_members );
+                    \%oneof_members, \%message_bytes );
+                my $name = $field->name;
+                $message_bytes{$name} =
+                    ( exists $message_bytes{$name} ? $message_bytes{$name} : '' )
+                    . $block;
+                $result{$name} = $self->decode(
+                    $self->_field_message_name($field),
+                    $message_bytes{$name},
+                );
                 next;
             }
 
@@ -812,14 +844,19 @@ class Proto3::Codec {
     # Enforce oneof last-wins after decoding member $field: delete any other
     # member of the same oneof from $result, so only the most recently seen
     # member of the group survives. $oneof_members maps oneof_index to the list
-    # of member field names. A no-op for fields not in any oneof.
-    method _clear_oneof_siblings ($field, $result, $oneof_members) {
+    # of member field names. A no-op for fields not in any oneof. The optional
+    # $message_bytes hashref holds the per-field accumulated raw message bytes
+    # used for singular-message merge; a superseded sibling's accumulated bytes
+    # are dropped too, so re-selecting a message member later starts fresh
+    # rather than merging into a stale earlier value.
+    method _clear_oneof_siblings ($field, $result, $oneof_members, $message_bytes = undef) {
         my $index = $field->oneof_index;
         return unless defined $index;
 
         for my $sibling ( @{ $oneof_members->{$index} } ) {
             next if $sibling eq $field->name;
             delete $result->{$sibling};
+            delete $message_bytes->{$sibling} if $message_bytes;
         }
         return;
     }

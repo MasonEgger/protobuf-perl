@@ -9,6 +9,11 @@ use Proto3::Schema::Field;
 use Proto3::WKT::Util;
 use Proto3::Exception;
 
+# Inclusive seconds range the proto3 Duration type allows: +/- 315576000000
+# seconds (about +/- 10000 years). protoc rejects a Duration outside this range
+# on JSON input. Pre-class lexical for the feature 'class' scoping rule.
+my $DURATION_MAX_SECONDS = 315_576_000_000;
+
 class Proto3::WKT::Duration {
 
     # The canonical Schema::Message for google.protobuf.Duration: an int64
@@ -45,6 +50,17 @@ class Proto3::WKT::Duration {
         my $seconds = $value->{seconds} // 0;
         my $nanos   = $value->{nanos}   // 0;
 
+        # protoc refuses to serialize a Duration outside +/- 315576000000s, so a
+        # protobuf-input-then-JSON-output of such a value must be an error too.
+        if (   $seconds > $DURATION_MAX_SECONDS
+            || $seconds < -$DURATION_MAX_SECONDS )
+        {
+            Proto3::Exception::JSON::WKT->throw(
+                message =>
+                    "Duration seconds $seconds out of range [+/-${DURATION_MAX_SECONDS}s]",
+            );
+        }
+
         my $negative = ( $seconds < 0 || $nanos < 0 ) ? 1 : 0;
         my $abs_seconds  = abs $seconds;
         my $abs_nanos    = abs $nanos;
@@ -78,6 +94,13 @@ class Proto3::WKT::Duration {
         }
 
         my $seconds = $whole + 0;
+        if ( $seconds > $DURATION_MAX_SECONDS ) {
+            Proto3::Exception::JSON::WKT->throw(
+                message =>
+                    "Duration '$string' out of range [+/-${DURATION_MAX_SECONDS}s]",
+            );
+        }
+
         my $nanos =
             defined $frac ? Proto3::WKT::Util::parse_fraction($frac) + 0 : 0;
 

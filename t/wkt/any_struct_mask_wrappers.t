@@ -127,9 +127,10 @@ use Proto3::WKT::Struct;
         'google.protobuf.Int32Value', 42 );
     is_deeply( $back, { value => 42 }, '42 -> { value => 42 }' );
 
-    # The same parametric path for every wrapper type.
+    # The same parametric path for every pass-through wrapper type. bool and
+    # bytes have a type-specific JSON form (JSON boolean / base64) and are
+    # covered in t/wkt/wkt_json_conformance.t, so they are excluded here.
     my %sample = (
-        'google.protobuf.BoolValue'   => 1,
         'google.protobuf.Int32Value'  => -7,
         'google.protobuf.Int64Value'  => 9_000_000_000,
         'google.protobuf.UInt32Value' => 5,
@@ -137,7 +138,6 @@ use Proto3::WKT::Struct;
         'google.protobuf.FloatValue'  => 1.5,
         'google.protobuf.DoubleValue' => 2.25,
         'google.protobuf.StringValue' => 'hello',
-        'google.protobuf.BytesValue'  => 'rawbytes',
     );
     for my $full_name ( sort keys %sample ) {
         my $v   = $sample{$full_name};

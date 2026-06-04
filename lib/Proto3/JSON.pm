@@ -651,14 +651,31 @@ class Proto3::JSON {
     method _decode_map ($field, $object, $opts) {
         my $entry_name = $self->_field_type_name($field);
         my $entry      = $schema->message($entry_name);
+        my ($key_field)   = grep { $_->number == 1 } @{ $entry->fields };
         my ($value_field) = grep { $_->number == 2 } @{ $entry->fields };
 
         my %out;
         for my $key ( keys %$object ) {
-            $out{$key} =
+            my $decoded_key = $self->_decode_map_key( $key_field, $key );
+            $out{$decoded_key} =
                 $self->_decode_element( $value_field, $object->{$key}, $opts );
         }
         return \%out;
+    }
+
+    # Coerce a JSON object key (always a string) into the map key field's proto3
+    # type. proto3 JSON renders every map key as a string, so an integer key
+    # arrives as "42" and a bool key as "true"/"false"; both must map back to the
+    # codec key form (a native integer or 1/0) so the binary re-encode and Perl
+    # hash lookups behave. A bool key accepts only the literals "true"/"false".
+    method _decode_map_key ($key_field, $key) {
+        my $type = $key_field->type;
+        if ( $type eq 'bool' ) {
+            return 1 if $key eq 'true';
+            return 0 if $key eq 'false';
+            $self->_reject_value( $key_field, $type, $key );
+        }
+        return $key;
     }
 
     # True when $full_name is a well-known type with a special JSON form.
