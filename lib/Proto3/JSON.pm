@@ -5,7 +5,9 @@ use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
 
+use B ();
 use JSON::PP ();
+use Math::BigInt ();
 use MIME::Base64 ();
 use Scalar::Util ();
 
@@ -27,6 +29,62 @@ my %STRING_NUMBER_TYPE =
 my %NUMBER_TYPE = map { $_ => 1 } qw(
     int32 uint32 sint32 fixed32 sfixed32 float double
 );
+
+# Inclusive [min, max] range for each integer proto3 type, as Math::BigInt so
+# the 64-bit bounds are exact (a native float cannot hold 2^64-1). proto3 JSON
+# input must reject an integer field whose value falls outside this range, the
+# same as protoc. Held as a pre-class lexical for the feature 'class' scoping
+# rule.
+my %INT_RANGE = (
+    int32    => [ Math::BigInt->new('-2147483648'),          Math::BigInt->new('2147483647') ],
+    sint32   => [ Math::BigInt->new('-2147483648'),          Math::BigInt->new('2147483647') ],
+    sfixed32 => [ Math::BigInt->new('-2147483648'),          Math::BigInt->new('2147483647') ],
+    uint32   => [ Math::BigInt->new('0'),                    Math::BigInt->new('4294967295') ],
+    fixed32  => [ Math::BigInt->new('0'),                    Math::BigInt->new('4294967295') ],
+    int64    => [ Math::BigInt->new('-9223372036854775808'), Math::BigInt->new('9223372036854775807') ],
+    sint64   => [ Math::BigInt->new('-9223372036854775808'), Math::BigInt->new('9223372036854775807') ],
+    sfixed64 => [ Math::BigInt->new('-9223372036854775808'), Math::BigInt->new('9223372036854775807') ],
+    uint64   => [ Math::BigInt->new('0'),                    Math::BigInt->new('18446744073709551615') ],
+    fixed64  => [ Math::BigInt->new('0'),                    Math::BigInt->new('18446744073709551615') ],
+);
+
+# The largest finite magnitude representable in each floating proto3 type. A
+# numeric JSON literal whose absolute value exceeds this overflows the type and
+# is rejected on input, matching protoc (the "Infinity"/"-Infinity" string forms
+# are handled separately and are NOT routed through this check).
+my %FLOAT_MAX = (
+    float  => 3.4028234663852886e+38,
+    double => 1.7976931348623157e+308,
+);
+
+# Classify a decoded JSON::PP scalar by the SV flags JSON::PP leaves on it: a
+# JSON string carries POK, a JSON number carries IOK or NOK, and a JSON boolean
+# is a blessed JSON::PP::Boolean. This is the only reliable way to tell a JSON
+# string "12" from a JSON number 12 after parsing, which proto3 input validation
+# needs (a string field must reject a number; an int field treats the two
+# spellings differently). Returns 'string', 'number', 'bool', or 'other'.
+my $json_kind = do {
+    sub ($value) {
+        return 'bool' if Scalar::Util::blessed($value)
+            && $value->isa('JSON::PP::Boolean');
+        return 'other' if ref $value;    # arrayref/hashref (array/object)
+        my $flags = B::svref_2object( \$value )->FLAGS;
+        return 'number' if $flags & ( B::SVf_IOK() | B::SVf_NOK() );
+        return 'string' if $flags & B::SVf_POK();
+        return 'other';
+    };
+};
+
+# True when $text is the decimal spelling of an integer with no surrounding
+# whitespace, sign-and-digits only (an optional leading '-' then one or more
+# digits). Used to validate the JSON-string form of an integer field, which
+# proto3 accepts but which protoc requires be a clean integer: " 1", "1 ",
+# "1.5", "1e5", and "" are all rejected.
+my $is_integer_string = do {
+    sub ($text) {
+        return $text =~ /\A-?[0-9]+\z/;
+    };
+};
 
 # Compute the default json_name: camelCase of a snake_case field name (data_blob
 # -> dataBlob). Mirrors the parser's _camel_case so a directly-built schema (no
@@ -107,7 +165,7 @@ class Proto3::JSON {
         return undef unless $handler;
 
         my $json =
-              $handler eq 'Proto3::WKT::Any'      ? $handler->to_json_value( $values, $codec )
+              $handler eq 'Proto3::WKT::Any'      ? $handler->to_json_value( $values, $codec, $self )
             : $handler eq 'Proto3::WKT::Wrappers' ? $handler->to_json_value( $full_name, $values )
             :                                       $handler->to_json_value($values);
         return { value => $json };
@@ -279,6 +337,14 @@ class Proto3::JSON {
     #   reject_unknown_fields  raise JSON::Parse on a JSON key matching no field
     method decode ($full_name, $json_string, %opts) {
         my $parsed = $self->_parse_json($json_string);
+        # A top-level JSON null is not a valid message (proto3 rejects it; only
+        # a nested field may be null, leaving that field unset). A WKT with a
+        # null special form (e.g. Value/NullValue) handles its own null.
+        if ( !defined $parsed && !$self->_is_wkt($full_name) ) {
+            Proto3::Exception::JSON::Parse->throw(
+                message => "top-level null is not a valid $full_name",
+            );
+        }
         return $self->_from_json_structure( $full_name, $parsed, \%opts );
     }
 
@@ -324,6 +390,7 @@ class Proto3::JSON {
         }
 
         my %out;
+        my %oneof_seen;    # oneof_index -> the field name already taken
         for my $key ( keys %$json ) {
             my $field = $field_by_key{$key};
             if ( !$field ) {
@@ -333,7 +400,28 @@ class Proto3::JSON {
                 );
             }
             my $value = $json->{$key};
-            next unless defined $value;    # JSON null leaves the field unset
+
+            # A JSON null normally leaves a field unset. The exception is a
+            # singular google.protobuf.Value (or NullValue) field, for which null
+            # is a legitimate value (Value.null_value = NULL_VALUE), so it must be
+            # decoded rather than skipped.
+            next if !defined $value && !$self->_field_takes_json_null($field);
+
+            # At most one member of a oneof may be present in the JSON object;
+            # two members set is an error (proto3 OneofFieldDuplicate). A null
+            # value above does not count as setting the field.
+            if ( defined( my $idx = $field->oneof_index ) ) {
+                if ( exists $oneof_seen{$idx} ) {
+                    Proto3::Exception::JSON::Parse->throw(
+                        message => sprintf(
+                            'oneof in %s has multiple members set: %s and %s',
+                            $full_name, $oneof_seen{$idx}, $field->name,
+                        ),
+                    );
+                }
+                $oneof_seen{$idx} = $field->name;
+            }
+
             $out{ $field->name } =
                 $self->_decode_field( $field, $value, $opts );
         }
@@ -378,6 +466,10 @@ class Proto3::JSON {
     # the enum's value table (its symbolic name); a number is taken as-is (an
     # unknown enumerator number is preserved, matching the binary codec).
     method _decode_enum ($field, $value) {
+        # A JSON null is accepted only for a google.protobuf.NullValue enum, where
+        # it denotes NULL_VALUE (0); _field_takes_json_null gates which nulls
+        # reach here.
+        return 0 if !defined $value;
         if ( !Scalar::Util::looks_like_number($value) ) {
             my $number = $self->_enum_number( $field, "$value" );
             if ( !defined $number ) {
@@ -409,21 +501,104 @@ class Proto3::JSON {
     # 32-bit integers and floats take the numeric value. A non-numeric value for a
     # numeric field raises TypeMismatch.
     method _decode_scalar ($field, $type, $value) {
-        return MIME::Base64::decode_base64("$value") if $type eq 'bytes';
-        return $value ? 1 : 0 if $type eq 'bool';
-        return "$value" if $type eq 'string';
+        my $kind = $json_kind->($value);
 
-        # Every remaining scalar type is numeric. A 64-bit type arrives as either
-        # a quoted string or a bare number; either way it must look numeric.
-        if ( !Scalar::Util::looks_like_number($value) ) {
-            Proto3::Exception::Codec::TypeMismatch->throw(
-                message => sprintf(
-                    'field %s expected %s, got non-numeric %s',
-                    $field->name, $type, "'$value'",
-                ),
-            );
+        if ( $type eq 'bytes' ) {
+            return MIME::Base64::decode_base64("$value");
         }
-        return $value + 0;
+        if ( $type eq 'bool' ) {
+            # A bool field accepts ONLY a JSON true/false, never a number or
+            # string (proto3 rejects e.g. a string for a bool field).
+            $self->_reject_value( $field, $type, $value )
+                if $kind ne 'bool';
+            return $value ? 1 : 0;
+        }
+        if ( $type eq 'string' ) {
+            # A string field accepts ONLY a JSON string, never a number, bool,
+            # array, or object (StringFieldNotAString).
+            $self->_reject_value( $field, $type, $value )
+                if $kind ne 'string';
+            return "$value";
+        }
+
+        # Every remaining scalar type is numeric: the integers and the floats.
+        if ( $INT_RANGE{$type} ) {
+            return $self->_decode_integer( $field, $type, $value, $kind );
+        }
+        return $self->_decode_float( $field, $type, $value, $kind );
+    }
+
+    # Decode and validate a JSON value for an integer-typed field. proto3 accepts
+    # both a bare JSON number and a quoted JSON string, but the value must denote
+    # an integer in the type's range: a fractional number (0.5), a number out of
+    # range, or a string that is not a clean decimal integer (" 1", "1 ", "1.5",
+    # "1e5", "") is rejected. Returns a native integer when it fits, else a
+    # Math::BigInt for exactness (64-bit values that overflow a native int).
+    method _decode_integer ($field, $type, $value, $kind) {
+        my $digits;
+        if ( $kind eq 'string' ) {
+            $self->_reject_value( $field, $type, $value )
+                unless $is_integer_string->("$value");
+            $digits = "$value";
+        }
+        elsif ( $kind eq 'number' ) {
+            # A JSON number must be integral: no fractional or exponent part
+            # that yields a non-integer. Stringify and require a clean integer.
+            my $text = sprintf( '%s', $value );
+            $self->_reject_value( $field, $type, $value )
+                unless $is_integer_string->($text);
+            $digits = $text;
+        }
+        else {
+            $self->_reject_value( $field, $type, $value );
+        }
+
+        my $big = Math::BigInt->new($digits);
+        my ( $min, $max ) = @{ $INT_RANGE{$type} };
+        if ( $big < $min || $big > $max ) {
+            $self->_reject_value( $field, $type, $value, 'out of range' );
+        }
+
+        # Reduce to a native integer when the magnitude is small enough to be
+        # exact as a Perl double (<= 2^53); keep the Math::BigInt otherwise so
+        # the wide 64-bit edge values stay exact for the binary re-encode.
+        my $limit = Math::BigInt->new(2)->bpow(53);
+        return $big->copy->babs <= $limit ? $big->numify : $big;
+    }
+
+    # Decode and validate a JSON value for a float/double field. A numeric JSON
+    # literal whose magnitude overflows the type is rejected (FloatFieldTooLarge
+    # /TooSmall, DoubleFieldTooSmall); a non-numeric, non-string value (bool,
+    # array, object) is rejected as a type mismatch. A JSON string is left to the
+    # existing numeric coercion (it carries the special "Infinity"/"NaN" forms).
+    method _decode_float ($field, $type, $value, $kind) {
+        if ( $kind eq 'number' ) {
+            my $max = $FLOAT_MAX{$type};
+            if ( abs( $value + 0 ) > $max ) {
+                $self->_reject_value( $field, $type, $value, 'out of range' );
+            }
+            return $value + 0;
+        }
+        if ( $kind eq 'string' ) {
+            $self->_reject_value( $field, $type, $value )
+                unless Scalar::Util::looks_like_number($value);
+            return $value + 0;
+        }
+        $self->_reject_value( $field, $type, $value );
+    }
+
+    # Raise the proto3 error for a JSON value that does not match its field's
+    # type. Throws Proto3::Exception::Codec::TypeMismatch (the conformance
+    # handler turns any thrown exception into a parse_error, and a value of the
+    # wrong type is precisely a type mismatch).
+    method _reject_value ($field, $type, $value, $reason = 'type mismatch') {
+        my $shown = ref $value ? ref($value) : "'$value'";
+        Proto3::Exception::Codec::TypeMismatch->throw(
+            message => sprintf(
+                'field %s expected %s, got %s (%s)',
+                $field->name, $type, $shown, $reason,
+            ),
+        );
     }
 
     # Decode a map field from a JSON object into a { key => value } hashref. Each
@@ -447,6 +622,53 @@ class Proto3::JSON {
         return defined Proto3::WKT->json_handler($full_name);
     }
 
+    # True when a JSON null is a real value for this singular field rather than an
+    # "unset" marker. That holds only for a google.protobuf.Value field (null ->
+    # Value.null_value) or a google.protobuf.NullValue enum field. A repeated or
+    # map field never reaches here with a bare null, and every other field treats
+    # null as unset.
+    method _field_takes_json_null ($field) {
+        return 0 if $field->is_repeated || $field->is_map;
+        if ( $field->is_message ) {
+            my $type = $self->_field_type_name($field);
+            return $type eq 'google.protobuf.Value';
+        }
+        if ( $field->is_enum ) {
+            my $type = $self->_field_type_name($field);
+            return $type eq 'google.protobuf.NullValue';
+        }
+        return 0;
+    }
+
+    # --- structure bridge for the Any handler -------------------------------
+    #
+    # google.protobuf.Any's JSON form embeds the wrapped message's own JSON. The
+    # Any handler holds the wrapped message as codec-shaped bytes, so it needs to
+    # cross the binary <-> JSON boundary for the inner message. These three thin
+    # methods expose exactly that, reusing the encoder's own conversion paths so
+    # camelCase names, WKT special forms, and default-omit all apply inside an Any.
+
+    # The JSON-shaped structure (hashref/arrayref/scalar) for a codec-shaped
+    # message value named $full_name. For a special-form WKT this is the bare
+    # special form (e.g. an RFC3339 string); for an ordinary message it is the
+    # camelCase JSON object.
+    method json_structure_for ($full_name, $values) {
+        return $self->_to_json_structure( $full_name, $values, {} );
+    }
+
+    # The codec-shaped message value for a JSON structure $json named $full_name.
+    # Inverse of json_structure_for.
+    method message_from_json ($full_name, $json) {
+        return $self->_from_json_structure( $full_name, $json, {} );
+    }
+
+    # True when $full_name has a special (non-plain-object) JSON form, so an Any
+    # wrapping it must carry the form under a reserved "value" key rather than
+    # inlining the wrapped message's fields beside "@type".
+    method wkt_has_special_form ($full_name) {
+        return $self->_is_wkt($full_name);
+    }
+
     # Delegate $json to the WKT from_json_value handler for $full_name, wrapping
     # any failure (a malformed special form, e.g. a bad RFC3339 timestamp) as
     # Proto3::Exception::JSON::WKT. The handlers have differing arities — Any
@@ -455,7 +677,7 @@ class Proto3::JSON {
         my $handler = Proto3::WKT->json_handler($full_name);
 
         my $result = eval {
-            $handler eq 'Proto3::WKT::Any'      ? $handler->from_json_value( $json, $codec )
+            $handler eq 'Proto3::WKT::Any'      ? $handler->from_json_value( $json, $codec, $self )
             : $handler eq 'Proto3::WKT::Wrappers' ? $handler->from_json_value( $full_name, $json )
             :                                       $handler->from_json_value($json);
         };

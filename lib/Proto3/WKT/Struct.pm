@@ -8,6 +8,22 @@ use Proto3::Schema::Message;
 use Proto3::Schema::Field;
 use Proto3::Schema::Enum;
 use Proto3::Schema::Oneof;
+use JSON::PP ();
+use B ();
+
+# True when a non-ref, defined JSON scalar was decoded as a JSON number (it
+# carries an integer or float SV flag) rather than a JSON string. proto3 maps a
+# JSON number to Value.number_value but a JSON string to Value.string_value, so
+# a quoted "5678" must NOT become number_value. A pre-class lexical: a file-scope
+# bareword sub is invisible inside the feature-'class' methods below, so they
+# close over this coderef instead. The do{} wrapper insulates the signatured sub
+# from this Perl build's class-adjacent parse glitch.
+my $is_json_number = do {
+    sub ($value) {
+        my $flags = B::svref_2object( \$value )->FLAGS;
+        return ( $flags & ( B::SVf_IOK() | B::SVf_NOK() ) ) ? 1 : 0;
+    };
+};
 
 # google.protobuf.NullValue — a singleton enum whose only value is NULL_VALUE=0.
 # Its JSON form is the literal null. to_json_value ignores its (always-0) input
@@ -71,12 +87,58 @@ class Proto3::WKT::Value {
         );
     }
 
-    sub to_json_value ( $class, $value )  { return $value }
-    sub from_json_value ( $class, $json ) { return $json }
+    # to_json_value($value) -> arbitrary JSON. The codec message shape is a
+    # single-key hashref naming the set oneof member (number_value, string_value,
+    # bool_value, null_value, struct_value, list_value); map it to the bare JSON
+    # value of that kind. struct_value/list_value recurse through their own
+    # handlers. An empty hashref (no oneof set) yields JSON null.
+    sub to_json_value ( $class, $value ) {
+        return undef unless ref $value eq 'HASH';
+
+        return undef if exists $value->{null_value};
+        return $value->{number_value} + 0 if exists $value->{number_value};
+        return "$value->{string_value}"   if exists $value->{string_value};
+        return $value->{bool_value}
+            ? JSON::PP::true
+            : JSON::PP::false
+            if exists $value->{bool_value};
+        return Proto3::WKT::Struct->to_json_value( $value->{struct_value} )
+            if exists $value->{struct_value};
+        return Proto3::WKT::ListValue->to_json_value( $value->{list_value} )
+            if exists $value->{list_value};
+
+        # No oneof member set -> the proto3 default Value is null.
+        return undef;
+    }
+
+    # from_json_value($json) -> message shape. Classify the arbitrary JSON value
+    # and wrap it in the matching oneof member: undef->null_value, a JSON::PP
+    # boolean->bool_value, an arrayref->list_value, a hashref->struct_value, a
+    # numeric scalar->number_value, anything else->string_value.
+    sub from_json_value ( $class, $json ) {
+        return { null_value => 0 } unless defined $json;
+
+        if ( JSON::PP::is_bool($json) ) {
+            return { bool_value => $json ? 1 : 0 };
+        }
+        if ( ref $json eq 'ARRAY' ) {
+            return { list_value =>
+                    Proto3::WKT::ListValue->from_json_value($json) };
+        }
+        if ( ref $json eq 'HASH' ) {
+            return { struct_value =>
+                    Proto3::WKT::Struct->from_json_value($json) };
+        }
+        if ( $is_json_number->($json) ) {
+            return { number_value => $json + 0 };
+        }
+        return { string_value => "$json" };
+    }
 }
 
-# google.protobuf.ListValue — a wrapper around a repeated Value. Its JSON form is
-# a JSON array; both conversions pass the arrayref through unchanged.
+# google.protobuf.ListValue — a wrapper around a repeated Value. Its codec shape
+# is { values => [ <Value-shape>, ... ] }; its JSON form is a JSON array of the
+# elements' JSON values.
 class Proto3::WKT::ListValue {
 
     sub schema_message ($class) {
@@ -92,12 +154,26 @@ class Proto3::WKT::ListValue {
         );
     }
 
-    sub to_json_value ( $class, $value )  { return $value }
-    sub from_json_value ( $class, $json ) { return $json }
+    # to_json_value($value) -> JSON array. Map each element of the values list
+    # through the Value handler.
+    sub to_json_value ( $class, $value ) {
+        my $values = ( ref $value eq 'HASH' ? $value->{values} : undef ) // [];
+        return [ map { Proto3::WKT::Value->to_json_value($_) } @$values ];
+    }
+
+    # from_json_value($json) -> { values => [ <Value-shape>, ... ] }. Each JSON
+    # element becomes a Value message shape.
+    sub from_json_value ( $class, $json ) {
+        my $array = ref $json eq 'ARRAY' ? $json : [];
+        return {
+            values => [ map { Proto3::WKT::Value->from_json_value($_) } @$array ]
+        };
+    }
 }
 
-# google.protobuf.Struct — a map<string, Value>. Its JSON form is a JSON object;
-# both conversions pass the hashref through unchanged.
+# google.protobuf.Struct — a map<string, Value>. Its codec shape is
+# { fields => { key => <Value-shape> } }; its JSON form is a JSON object whose
+# values are the fields' JSON values.
 class Proto3::WKT::Struct {
 
     sub schema_message ($class) {
@@ -127,8 +203,27 @@ class Proto3::WKT::Struct {
         );
     }
 
-    sub to_json_value ( $class, $value )  { return $value }
-    sub from_json_value ( $class, $json ) { return $json }
+    # to_json_value($value) -> JSON object. Map each field value through the
+    # Value handler, keyed by the field name.
+    sub to_json_value ( $class, $value ) {
+        my $fields = ( ref $value eq 'HASH' ? $value->{fields} : undef ) // {};
+        return {
+            map { $_ => Proto3::WKT::Value->to_json_value( $fields->{$_} ) }
+                keys %$fields
+        };
+    }
+
+    # from_json_value($json) -> { fields => { key => <Value-shape> } }. Each JSON
+    # object value becomes a Value message shape.
+    sub from_json_value ( $class, $json ) {
+        my $obj = ref $json eq 'HASH' ? $json : {};
+        return {
+            fields => {
+                map { $_ => Proto3::WKT::Value->from_json_value( $obj->{$_} ) }
+                    keys %$obj
+            }
+        };
+    }
 }
 
 1;

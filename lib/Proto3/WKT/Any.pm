@@ -26,41 +26,59 @@ class Proto3::WKT::Any {
         );
     }
 
-    # to_json_value($value, $codec) -> hashref { '@type' => $url, ...inner... }.
+    # to_json_value($value, $codec, $json) -> hashref { '@type' => $url, ... }.
     #
-    # The Any JSON form decodes the wrapped bytes into the inner message's fields
-    # and inlines them beside an "@type" key carrying the type URL (proto3 JSON
-    # spec, §4.8). The inner type's fully-qualified name is the last path segment
-    # of the type_url; $codec must know that message. The merged hashref is the
-    # inner fields plus the reserved "@type" key.
-    sub to_json_value ( $class, $value, $codec ) {
+    # The Any JSON form decodes the wrapped bytes into the inner message and
+    # embeds its JSON beside an "@type" key carrying the type URL (proto3 JSON
+    # spec, §4.8). $codec (the binary codec) turns the stored bytes into the
+    # inner message's codec shape; $json (the Proto3::JSON encoder) turns that
+    # shape into the inner message's JSON. For an ordinary message the inner JSON
+    # is an object whose fields inline beside "@type"; for a well-known type with
+    # a special JSON form (Timestamp/Duration/Struct/Value/wrappers/Any/...) the
+    # special form is carried under a reserved "value" key.
+    sub to_json_value ( $class, $value, $codec, $json ) {
         my $type_url = $value->{type_url} // '';
         my $bytes    = $value->{value}    // '';
 
         my $full_name = _full_name_from_url($type_url);
         my $inner     = $codec->decode( $full_name, $bytes );
+        my $structure = $json->json_structure_for( $full_name, $inner );
 
-        return { '@type' => $type_url, %$inner };
+        if ( $json->wkt_has_special_form($full_name) ) {
+            return { '@type' => $type_url, value => $structure };
+        }
+        return { '@type' => $type_url, %$structure };
     }
 
-    # from_json_value($json, $codec) -> hashref { type_url, value }.
+    # from_json_value($json_value, $codec, $json) -> hashref { type_url, value }.
     #
-    # Reverse of to_json_value: pull the "@type" key off the object, encode the
-    # remaining fields as the inner message, and return the codec's { type_url,
-    # value } form. A missing "@type" raises Proto3::Exception::JSON::WKT.
-    sub from_json_value ( $class, $json, $codec ) {
-        if ( ref $json ne 'HASH' || !defined $json->{'@type'} ) {
+    # Reverse of to_json_value: read the "@type" URL (which may appear in any key
+    # position), reconstruct the inner message's JSON (either the "value"-wrapped
+    # special form of a well-known type, or the remaining inlined fields of an
+    # ordinary message), JSON-decode it to the inner message's codec shape, and
+    # binary-encode that to the stored bytes. A missing "@type" raises JSON::WKT.
+    sub from_json_value ( $class, $json_value, $codec, $json ) {
+        if ( ref $json_value ne 'HASH' || !defined $json_value->{'@type'} ) {
             Proto3::Exception::JSON::WKT->throw(
                 message => 'Any JSON value must be an object with "@type"',
             );
         }
 
-        my $type_url  = $json->{'@type'};
+        my $type_url  = $json_value->{'@type'};
         my $full_name = _full_name_from_url($type_url);
 
-        my %inner = %$json;
-        delete $inner{'@type'};
-        my $bytes = $codec->encode( $full_name, \%inner );
+        my $inner_json;
+        if ( $json->wkt_has_special_form($full_name) ) {
+            $inner_json = $json_value->{value};
+        }
+        else {
+            my %inner = %$json_value;
+            delete $inner{'@type'};
+            $inner_json = \%inner;
+        }
+
+        my $shape = $json->message_from_json( $full_name, $inner_json );
+        my $bytes = $codec->encode( $full_name, $shape );
 
         return { type_url => $type_url, value => $bytes };
     }

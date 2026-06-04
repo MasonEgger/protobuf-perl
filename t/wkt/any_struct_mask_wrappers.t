@@ -12,6 +12,7 @@ use Proto3::Schema::File;
 use Proto3::Schema::Message;
 use Proto3::Schema::Field;
 use Proto3::Codec;
+use Proto3::JSON;
 use Proto3::WKT;
 use Proto3::WKT::Empty;
 use Proto3::WKT::Any;
@@ -60,6 +61,7 @@ use Proto3::WKT::Struct;
     );
     $schema->resolve;
     my $codec = Proto3::Codec->new( schema => $schema );
+    my $jc = Proto3::JSON->new( codec => $codec, schema => $schema );
 
     # The Any value carries the inner type's bytes.
     my $inner  = { x => 3, y => 4 };
@@ -69,13 +71,15 @@ use Proto3::WKT::Struct;
         value    => $packed,
     };
 
-    my $json = Proto3::WKT::Any->to_json_value( $any, $codec );
+    # to_json_value now uses the JSON encoder to render the inner message, so the
+    # inlined keys are camelCase JSON names (here x/y are unchanged).
+    my $json = Proto3::WKT::Any->to_json_value( $any, $codec, $jc );
     is( $json->{'@type'}, 'type.googleapis.com/demo.Point',
         'Any JSON carries @type' );
     is( $json->{x}, 3, 'Any JSON inlines inner field x' );
     is( $json->{y}, 4, 'Any JSON inlines inner field y' );
 
-    my $back = Proto3::WKT::Any->from_json_value( $json, $codec );
+    my $back = Proto3::WKT::Any->from_json_value( $json, $codec, $jc );
     is( $back->{type_url}, 'type.googleapis.com/demo.Point',
         'Any decode restores type_url' );
     my $decoded = $codec->decode( 'demo.Point', $back->{value} );
@@ -83,7 +87,7 @@ use Proto3::WKT::Struct;
         'Any decode restores inner bytes' );
 
     # Missing @type on decode -> JSON::WKT.
-    eval { Proto3::WKT::Any->from_json_value( { x => 1 }, $codec ); 1 };
+    eval { Proto3::WKT::Any->from_json_value( { x => 1 }, $codec, $jc ); 1 };
     isa_ok( $@, 'Proto3::Exception::JSON::WKT',
         'Any without @type -> JSON::WKT' );
 }
@@ -159,20 +163,23 @@ use Proto3::WKT::Struct;
 # --- 27.5: Struct / Value / ListValue / NullValue (T-wkt-6) -------------
 
 {
-    my $obj = {
-        name    => 'Ada',
-        age     => 42,
-        active  => 1,
-        nothing => undef,
-        tags    => [ 'a', 'b', 2 ],
-        nested  => { k => 'v' },
-    };
-
-    my $json = Proto3::WKT::Struct->to_json_value($obj);
-    is_deeply( $json, $obj, 'Struct -> arbitrary JSON object' );
-
-    my $back = Proto3::WKT::Struct->from_json_value($json);
-    is_deeply( $back, $obj, 'Struct <- arbitrary JSON object' );
+    # The Struct/Value/ListValue handlers bridge the codec message shape (oneof
+    # members, field maps, value lists) and arbitrary JSON; the detailed kind-by-
+    # kind coverage lives in t/wkt/struct_value_json.t. Here we assert the basic
+    # contract and the round-trip through from->to.
+    my $obj_json  = { name => 'Ada', nested => { k => 'v' } };
+    my $obj_shape = Proto3::WKT::Struct->from_json_value($obj_json);
+    is_deeply(
+        $obj_shape,
+        { fields => {
+                name   => { string_value => 'Ada' },
+                nested => { struct_value => { fields =>
+                            { k => { string_value => 'v' } } } },
+            } },
+        'Struct JSON object -> field map of Value shapes',
+    );
+    is_deeply( Proto3::WKT::Struct->to_json_value($obj_shape), $obj_json,
+        'Struct field map -> JSON object (round-trip)' );
 
     # NullValue maps to JSON null both ways.
     is( Proto3::WKT::NullValue->to_json_value(0), undef,
@@ -180,20 +187,28 @@ use Proto3::WKT::Struct;
     is( Proto3::WKT::NullValue->from_json_value(undef), 0,
         'null -> NullValue 0' );
 
-    # ListValue <-> JSON array.
-    my $list = [ 1, 'two', undef, [ 3 ], { a => 1 } ];
-    is_deeply( Proto3::WKT::ListValue->to_json_value($list), $list,
-        'ListValue -> array' );
-    is_deeply( Proto3::WKT::ListValue->from_json_value($list), $list,
-        'ListValue <- array' );
+    # ListValue <-> JSON array via Value-shaped elements.
+    my $list_json  = [ 1, 'two', undef ];
+    my $list_shape = Proto3::WKT::ListValue->from_json_value($list_json);
+    is_deeply(
+        $list_shape,
+        { values =>
+                [ { number_value => 1 }, { string_value => 'two' },
+                { null_value => 0 } ] },
+        'ListValue JSON array -> values list of Value shapes',
+    );
+    is_deeply( Proto3::WKT::ListValue->to_json_value($list_shape), $list_json,
+        'ListValue values list -> JSON array (round-trip)' );
 
-    # Value covers all kinds via to/from_json_value identity over JSON.
-    for my $v ( undef, 1, 'x', 3.5, [ 1, 2 ], { a => 'b' } ) {
-        is_deeply( Proto3::WKT::Value->to_json_value($v), $v,
-            'Value passes JSON through' );
-        is_deeply( Proto3::WKT::Value->from_json_value($v), $v,
-            'Value decodes JSON through' );
-    }
+    # Value covers each scalar kind, mapping JSON to the matching oneof member.
+    is_deeply( Proto3::WKT::Value->from_json_value(undef),
+        { null_value => 0 }, 'Value null -> null_value' );
+    is_deeply( Proto3::WKT::Value->from_json_value(3.5),
+        { number_value => 3.5 }, 'Value number -> number_value' );
+    is_deeply( Proto3::WKT::Value->from_json_value('x'),
+        { string_value => 'x' }, 'Value string -> string_value' );
+    is( Proto3::WKT::Value->to_json_value( { number_value => 3.5 } ), 3.5,
+        'Value number_value -> bare number' );
 
     # The facade registers the Struct family.
     my $schema = Proto3::Schema->new;
