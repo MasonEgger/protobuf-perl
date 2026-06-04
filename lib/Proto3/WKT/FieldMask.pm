@@ -34,7 +34,24 @@ class Proto3::WKT::FieldMask {
     # JSON spec, §4.8). An empty path list yields the empty string.
     sub to_json_value ( $class, $value ) {
         my $paths = $value->{paths} // [];
-        return join ',', map { _path_to_camel($_) } @$paths;
+        return join ',', map { _path_to_camel_checked($_) } @$paths;
+    }
+
+    # snake_case -> camelCase for a single path, rejecting any path that does NOT
+    # round-trip (proto3 JSON spec, §4.8 — FieldMask*DontRoundTrip). A proto path
+    # whose camelCase form cannot be converted back to the original is not
+    # serializable: this covers a segment already carrying an uppercase letter
+    # (FieldMaskPathsDontRoundTrip, e.g. "fooBar"), a digit after an underscore
+    # (FieldMaskNumbersDontRoundTrip, e.g. "foo_3_bar"), and a doubled or trailing
+    # underscore (FieldMaskTooManyUnderscore, e.g. "foo__bar").
+    sub _path_to_camel_checked ($path) {
+        my $camel = _path_to_camel($path);
+        if ( _path_to_snake($camel) ne $path ) {
+            Proto3::Exception::JSON::WKT->throw(
+                message => "FieldMask path '$path' does not round-trip to camelCase",
+            );
+        }
+        return $camel;
     }
 
     # from_json_value($string) -> hashref { paths => [...] }.
@@ -49,6 +66,14 @@ class Proto3::WKT::FieldMask {
             );
         }
         return { paths => [] } if $string eq '';
+        # The JSON form is camelCase: an input path segment must not itself carry
+        # an underscore (FieldMaskInvalidCharacter, e.g. "bar_bar"). Such a value
+        # is rejected rather than silently snake-cased.
+        if ( $string =~ /_/ ) {
+            Proto3::Exception::JSON::WKT->throw(
+                message => "FieldMask JSON path contains an invalid character '_'",
+            );
+        }
         my @paths = map { _path_to_snake($_) } split /,/, $string;
         return { paths => \@paths };
     }

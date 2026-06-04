@@ -736,7 +736,8 @@ class Proto3::Codec {
                 next;
             }
 
-            ( my $value, $rest ) = $spec->{decode}->($rest);
+            ( my $value, $rest ) =
+                $self->_decode_scalar_value( $field, $spec, $rest );
 
             # Closed-enum (proto2/editions-proto2) unknown value: a number that
             # is not a declared enumerator must NOT be stored as the field's
@@ -857,9 +858,34 @@ class Proto3::Codec {
 
         # Unpacked scalar element (also the only path for string/bytes): one
         # element under one tag.
-        ( my $value, $rest ) = $spec->{decode}->($rest);
+        ( my $value, $rest ) =
+            $self->_decode_scalar_value( $field, $spec, $rest );
         push @$list, $value;
         return $rest;
+    }
+
+    # Decode one scalar value off $rest with $spec's decoder, applying the
+    # field's UTF-8 validation policy for a `string` field. proto3 (and the
+    # editions default) sets utf8_validation=VERIFY: the wire octets of a string
+    # MUST be valid UTF-8, and an invalid sequence is a parse error
+    # (RejectInvalidUtf8.String.*). proto2 strings (NONE) keep the lenient decode
+    # — invalid octets are replaced with U+FFFD rather than rejected. Every
+    # non-string type is decoded straight through $spec.
+    method _decode_scalar_value ($field, $spec, $rest) {
+        if ( $field->type eq 'string' && $field->utf8_validation eq 'VERIFY' ) {
+            ( my $bytes, my $tail ) = $self->_read_packed_block($rest);
+            my $value = eval { Encode::decode( 'UTF-8', $bytes, Encode::FB_CROAK() ) };
+            if ($@) {
+                Proto3::Exception::Codec::TypeMismatch->throw(
+                    message => sprintf(
+                        'string field %s carries invalid UTF-8 on the wire',
+                        $field->name,
+                    ),
+                );
+            }
+            return ( $value, $tail );
+        }
+        return $spec->{decode}->($rest);
     }
 
     # Decode one embedded (length-delimited) message off the front of $bytes:

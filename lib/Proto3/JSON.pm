@@ -255,6 +255,17 @@ class Proto3::JSON {
             return;
         }
         if ( $field->is_enum ) {
+            # A google.protobuf.NullValue enum field renders as JSON null. When it
+            # has implicit presence and holds its default (0 = NULL_VALUE), proto3
+            # omits it entirely (NullValueInNormalMessage); a oneof member is
+            # always emitted, as JSON null (NullValueInOtherOneof*).
+            if ( $self->_field_is_null_value($field) ) {
+                return if !$opts->{emit_defaults}
+                    && !$self->_has_explicit_presence($field)
+                    && $value == 0;
+                $out->{$key} = undef;    # JSON null
+                return;
+            }
             $out->{$key} = $self->_encode_enum( $field, $value, $opts );
             return;
         }
@@ -450,6 +461,11 @@ class Proto3::JSON {
     # Parse a JSON string, translating any JSON::PP failure into a
     # Proto3::Exception::JSON::Parse so callers see one library-native error type.
     method _parse_json ($json_string) {
+        # JSON::PP silently keeps the LAST of two identically-spelled object keys,
+        # so a literal duplicate (FieldNameDuplicate) would slip through. Scan the
+        # raw text for a repeated key within any one object and reject it first.
+        $self->_reject_duplicate_keys($json_string);
+
         my $parsed = eval { JSON::PP->new->decode($json_string) };
         if ($@) {
             my $detail = $@;
@@ -459,6 +475,76 @@ class Proto3::JSON {
             );
         }
         return $parsed;
+    }
+
+    # Reject a JSON document in which any single object contains the same key
+    # twice (proto3 JSON rejects a duplicate field — FieldNameDuplicate). A
+    # minimal tokenizer walks the text tracking a stack of per-object seen-key
+    # sets, correctly ignoring braces/commas/colons that appear inside string
+    # literals. Malformed JSON is left for JSON::PP to diagnose; this only flags
+    # the duplicate-key case JSON::PP would otherwise swallow.
+    method _reject_duplicate_keys ($text) {
+        my @stack;            # one { } hashref of seen keys per open object
+        my @expect;           # per-object: is the next string a KEY (vs value)?
+        my $i   = 0;
+        my $len = length $text;
+
+        while ( $i < $len ) {
+            my $ch = substr( $text, $i, 1 );
+
+            if ( $ch eq '"' ) {
+                my ( $str, $next ) = $self->_scan_json_string( $text, $i );
+                if ( @stack && $expect[-1] ) {
+                    if ( $stack[-1]{$str}++ ) {
+                        Proto3::Exception::JSON::Parse->throw(
+                            message => "duplicate JSON object key '$str'",
+                        );
+                    }
+                }
+                $i = $next;
+                next;
+            }
+            if ( $ch eq '{' ) {
+                push @stack,  {};
+                push @expect, 1;       # first token inside an object is a key
+            }
+            elsif ( $ch eq '}' ) {
+                pop @stack;
+                pop @expect;
+            }
+            elsif ( $ch eq ':' ) {
+                $expect[-1] = 0 if @expect;    # value follows the colon
+            }
+            elsif ( $ch eq ',' ) {
+                $expect[-1] = 1 if @expect;    # next member's key follows
+            }
+            $i++;
+        }
+        return;
+    }
+
+    # Scan a JSON string literal starting at the opening quote at $pos. Returns
+    # ($contents_with_escapes_resolved_enough_for_key_comparison, $index_after).
+    # Only the escapes that can affect key identity matter; \" and \\ are handled
+    # so an escaped quote does not end the string early. The returned text is used
+    # solely for duplicate-key comparison, so a fully spec-correct unescape is not
+    # required — only that two textually identical keys compare equal.
+    method _scan_json_string ($text, $pos) {
+        my $i   = $pos + 1;       # skip opening quote
+        my $len = length $text;
+        my $out = '';
+        while ( $i < $len ) {
+            my $ch = substr( $text, $i, 1 );
+            if ( $ch eq '\\' ) {
+                $out .= substr( $text, $i, 2 );    # keep the escape pair verbatim
+                $i += 2;
+                next;
+            }
+            last if $ch eq '"';
+            $out .= $ch;
+            $i++;
+        }
+        return ( $out, $i + 1 );    # index past the closing quote
     }
 
     # Map a decoded JSON value ($json) onto the message named $full_name. A
@@ -490,8 +576,24 @@ class Proto3::JSON {
 
         my %out;
         my %oneof_seen;    # oneof_index -> the field name already taken
+        my %field_seen;    # field name -> the JSON key that already named it
         for my $key ( keys %$json ) {
             my $field = $field_by_key{$key};
+
+            # Two distinct JSON keys that resolve to the SAME field (e.g. the
+            # snake_case proto name and its camelCase json_name both present) is a
+            # duplicate and must be rejected (FieldNameDuplicateDifferentCasing).
+            if ( $field && exists $field_seen{ $field->name } ) {
+                Proto3::Exception::JSON::Parse->throw(
+                    message => sprintf(
+                        'duplicate field %s in message %s (keys %s and %s)',
+                        $field->name, $full_name,
+                        $field_seen{ $field->name }, $key,
+                    ),
+                );
+            }
+            $field_seen{ $field->name } = $key if $field;
+
             if ( !$field ) {
                 next unless $opts->{reject_unknown_fields};
                 Proto3::Exception::JSON::Parse->throw(
@@ -521,8 +623,14 @@ class Proto3::JSON {
                 $oneof_seen{$idx} = $field->name;
             }
 
-            $out{ $field->name } =
-                $self->_decode_field( $field, $value, $opts );
+            my $decoded = $self->_decode_field( $field, $value, $opts );
+            # A singular enum field whose unknown string is ignored decodes to
+            # undef (IgnoreUnknownEnumStringValueInOptionalField); leave it unset
+            # rather than storing an undef value. Repeated/map fields always
+            # return a (possibly empty) container, never a bare undef, so this
+            # only suppresses the ignored-singular-enum case.
+            next if !defined $decoded && $field->is_enum && !$field->is_repeated;
+            $out{ $field->name } = $decoded;
         }
         return \%out;
     }
@@ -532,12 +640,27 @@ class Proto3::JSON {
     method _decode_field ($field, $value, $opts) {
         return $self->_decode_map( $field, $value, $opts )    if $field->is_map;
         if ( $field->is_repeated ) {
-            return [ map { $self->_decode_element( $field, $_, $opts ) }
-                    @$value ];
+            # A JSON null is never a valid element of a repeated field
+            # (RepeatedFieldMessageElementIsNull); reject it before decoding.
+            for my $element (@$value) {
+                next if defined $element;
+                Proto3::Exception::JSON::Parse->throw(
+                    message => sprintf(
+                        'null element in repeated field %s', $field->name,
+                    ),
+                );
+            }
+            # A repeated enum element whose unknown string is ignored decodes to
+            # undef; drop those elements (IgnoreUnknownEnumStringValueIn*Field/
+            # Part) so the surviving elements keep their order.
+            return [
+                grep { defined }
+                map  { $self->_decode_element( $field, $_, $opts ) } @$value
+            ];
         }
         return $self->_decode_message_value( $field, $value, $opts )
             if $field->is_message;
-        return $self->_decode_enum( $field, $value ) if $field->is_enum;
+        return $self->_decode_enum( $field, $value, $opts ) if $field->is_enum;
         return $self->_decode_scalar( $field, $field->type, $value );
     }
 
@@ -546,7 +669,7 @@ class Proto3::JSON {
     method _decode_element ($field, $value, $opts) {
         return $self->_decode_message_value( $field, $value, $opts )
             if $field->is_message;
-        return $self->_decode_enum( $field, $value ) if $field->is_enum;
+        return $self->_decode_enum( $field, $value, $opts ) if $field->is_enum;
         return $self->_decode_scalar( $field, $field->type, $value );
     }
 
@@ -564,7 +687,13 @@ class Proto3::JSON {
     # Decode an enum JSON value to its integer number. A string is looked up in
     # the enum's value table (its symbolic name); a number is taken as-is (an
     # unknown enumerator number is preserved, matching the binary codec).
-    method _decode_enum ($field, $value) {
+    #
+    # An unknown enum STRING is normally a parse error, but under
+    # ignore_unknown_fields (the conformance JSON_IGNORE_UNKNOWN_PARSING_TEST
+    # category, IgnoreUnknownEnumStringValue.*) it is IGNORED instead: the value
+    # is dropped. We signal "drop me" by returning undef, which the caller treats
+    # as "leave the field unset" / "skip this element".
+    method _decode_enum ($field, $value, $opts) {
         # A JSON null is accepted only for a google.protobuf.NullValue enum, where
         # it denotes NULL_VALUE (0); _field_takes_json_null gates which nulls
         # reach here.
@@ -572,6 +701,7 @@ class Proto3::JSON {
         if ( !Scalar::Util::looks_like_number($value) ) {
             my $number = $self->_enum_number( $field, "$value" );
             if ( !defined $number ) {
+                return undef if $opts->{ignore_unknown_fields};
                 Proto3::Exception::Codec::TypeMismatch->throw(
                     message => sprintf(
                         'enum field %s has no value named %s',
@@ -603,7 +733,7 @@ class Proto3::JSON {
         my $kind = $json_kind->($value);
 
         if ( $type eq 'bytes' ) {
-            return MIME::Base64::decode_base64("$value");
+            return $self->_decode_base64( $field, "$value" );
         }
         if ( $type eq 'bool' ) {
             # A bool field accepts ONLY a JSON true/false, never a number or
@@ -712,6 +842,19 @@ class Proto3::JSON {
         );
     }
 
+    # Decode a base64-encoded bytes JSON value, accepting BOTH the standard
+    # alphabet (+/) and the URL-safe alphabet (-_), with or without '=' padding
+    # (proto3 JSON spec, §4.9 — BytesFieldBase64Url). The URL-safe characters are
+    # translated to standard before decoding, and missing padding is restored so
+    # MIME::Base64 (which wants a length that is a multiple of 4) accepts it.
+    method _decode_base64 ($field, $text) {
+        $text =~ tr{-_}{+/};                 # URL-safe alphabet -> standard
+        $text =~ s/=+\z//;                   # drop any existing padding
+        my $pad = ( 4 - ( length($text) % 4 ) ) % 4;
+        $text .= '=' x $pad;
+        return MIME::Base64::decode_base64($text);
+    }
+
     # Decode a map field from a JSON object into a { key => value } hashref. Each
     # object value is decoded per the value field's kind (via the synthetic
     # value field at number 2 in the MapEntry).
@@ -724,8 +867,14 @@ class Proto3::JSON {
         my %out;
         for my $key ( keys %$object ) {
             my $decoded_key = $self->_decode_map_key( $key_field, $key );
-            $out{$decoded_key} =
+            my $decoded_value =
                 $self->_decode_element( $value_field, $object->{$key}, $opts );
+            # A map value that is an enum with an ignored unknown string decodes
+            # to undef (IgnoreUnknownEnumStringValueInMapValue/MapPart); skip the
+            # whole entry so the map omits that key rather than mapping it to
+            # undef.
+            next if !defined $decoded_value && $value_field->is_enum;
+            $out{$decoded_key} = $decoded_value;
         }
         return \%out;
     }
@@ -743,6 +892,13 @@ class Proto3::JSON {
             $self->_reject_value( $key_field, $type, $key );
         }
         return $key;
+    }
+
+    # True when $field is a google.protobuf.NullValue enum field, whose proto3
+    # JSON form is the literal null (not the enumerator name "NULL_VALUE").
+    method _field_is_null_value ($field) {
+        return 0 unless $field->is_enum;
+        return $self->_field_type_name($field) eq 'google.protobuf.NullValue';
     }
 
     # True when $full_name is a well-known type with a special JSON form.

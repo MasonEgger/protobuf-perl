@@ -367,6 +367,22 @@ sub Proto3::DescriptorSet::_build_field {
         $features->{field_presence} //= 'LEGACY_REQUIRED';
     }
 
+    # An explicit FieldOptions.packed flag (the proto2-era `[packed = true]` /
+    # `[packed = false]`) is an override of the edition's repeated_field_encoding
+    # default for THIS field: packed=true means PACKED, packed=false means
+    # EXPANDED. Translate it into a per-field repeated_field_encoding override so
+    # the feature-resolution pass folds it over the edition default and is_packed
+    # reflects it (proto2 [packed=true] overrides EXPANDED -> PACKED). An editions
+    # field expresses this directly as features.repeated_field_encoding, which
+    # _features_override already produced; that explicit override wins, so only
+    # derive from the packed flag when one isn't already present.
+    my $packed = $desc->{options}{packed};
+    if ( defined $packed
+        && !defined $features->{repeated_field_encoding} )
+    {
+        $features->{repeated_field_encoding} = $packed ? 'PACKED' : 'EXPANDED';
+    }
+
     return Proto3::Schema::Field->new(
         name        => $desc->{name} // '',
         number      => $desc->{number},

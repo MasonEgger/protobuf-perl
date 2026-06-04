@@ -86,6 +86,47 @@ is( field_named( $p3, 'repeated_int32' )->is_packed, 1,
     'proto3 repeated scalar defaults to packed' );
 
 # ----------------------------------------------------------------------
+# Explicit [packed = true] / [packed = false] override the edition default
+# (spec §4.6). A proto2 field declared `[packed = true]` (packed_int32, field
+# 75) overrides proto2's EXPANDED default and encodes PACKED; `[packed = false]`
+# (unpacked_int32, field 89) keeps the EXPANDED default; a plain repeated proto2
+# scalar with no flag stays EXPANDED. proto3 is the mirror: an explicit
+# [packed = false] (unpacked_int32) overrides proto3's PACKED default.
+# ----------------------------------------------------------------------
+is( field_named( $p2, 'packed_int32' )->is_packed, 1,
+    'proto2 [packed = true] overrides EXPANDED default -> packed' );
+is( field_named( $p2, 'unpacked_int32' )->is_packed, 0,
+    'proto2 [packed = false] stays expanded' );
+is( field_named( $p3, 'unpacked_int32' )->is_packed, 0,
+    'proto3 [packed = false] overrides PACKED default -> expanded' );
+is( field_named( $p3, 'packed_int32' )->is_packed, 1,
+    'proto3 [packed = true] stays packed' );
+
+# ----------------------------------------------------------------------
+# The override is observable on the wire: an explicitly-packed proto2 field
+# encodes as one LEN-delimited run, while an explicitly-unpacked one encodes as
+# repeated tag+value entries. packed_int32 is field 75 (LEN tag (75<<3)|2 =
+# bytes DA 04); unpacked_int32 is field 89 (VARINT tag (89<<3)|0 = bytes C8 05).
+# ----------------------------------------------------------------------
+{
+    require Proto3::Codec;
+    my $codec = Proto3::Codec->new( schema => $schema );
+    my $type  = 'protobuf_test_messages.proto2.TestAllTypesProto2';
+
+    my $packed_wire = $codec->encode( $type, { packed_int32 => [ 1, 2, 3 ] } );
+    like( $packed_wire, qr/\xDA\x04/,
+        'proto2 [packed = true] field encodes a LEN-delimited packed run' );
+    unlike( $packed_wire, qr/\xD8\x04/,
+        'proto2 packed field emits no per-element VARINT tag (75<<3|0)' );
+
+    my $unpacked_wire
+        = $codec->encode( $type, { unpacked_int32 => [ 1, 2, 3 ] } );
+    my $vtags = () = $unpacked_wire =~ /\xC8\x05/g;
+    is( $vtags, 3,
+        'proto2 [packed = false] field encodes one VARINT tag per element' );
+}
+
+# ----------------------------------------------------------------------
 # Group field -> message_encoding 'delimited'.
 # ----------------------------------------------------------------------
 my $group_field = field_named( $p2, 'data' );

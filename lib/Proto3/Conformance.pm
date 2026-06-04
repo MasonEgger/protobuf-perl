@@ -22,6 +22,12 @@ my $RESPONSE_MESSAGE = 'conformance.ConformanceResponse';
 my $WIRE_PROTOBUF = 1;
 my $WIRE_JSON     = 2;
 
+# TestCategory.JSON_IGNORE_UNKNOWN_PARSING_TEST (conformance.proto): a JSON test
+# the testee must parse while IGNORING unknown input (unknown fields and unknown
+# enum string values) instead of erroring. Used to pass ignore_unknown_fields to
+# the JSON decoder for those cases.
+my $JSON_IGNORE_UNKNOWN = 3;
+
 # Lazily-built, cached singletons for the conformance schema and its codec/JSON.
 # The schema comes from the vendored binary FileDescriptorSet so the testee needs
 # no protoc at runtime. Pre-class lexicals shared by the class methods below.
@@ -142,9 +148,16 @@ sub Proto3::Conformance::_parse_payload {
     }
 
     if ( exists $request->{json_payload} ) {
+        # The JSON_IGNORE_UNKNOWN_PARSING_TEST category (test_category = 3) asks
+        # the testee to ignore unknown input — both unknown fields and unknown
+        # enum string values (IgnoreUnknownEnumStringValue.*) — rather than fail.
+        my $ignore_unknown =
+            ( $request->{test_category} // 0 ) == $JSON_IGNORE_UNKNOWN ? 1 : 0;
         my $values = eval {
-            Proto3::Conformance->json->decode( $message_type,
-                $request->{json_payload} );
+            Proto3::Conformance->json->decode(
+                $message_type, $request->{json_payload},
+                ignore_unknown_fields => $ignore_unknown,
+            );
         };
         return ( undef, { parse_error => "$@" } ) if $@;
         return ( $values, undef );

@@ -10,6 +10,7 @@ use Proto3::Schema::Enum;
 use Proto3::Schema::Oneof;
 use JSON::PP ();
 use B ();
+use Proto3::Exception;
 
 # True when a non-ref, defined JSON scalar was decoded as a JSON number (it
 # carries an integer or float SV flag) rather than a JSON string. proto3 maps a
@@ -96,7 +97,19 @@ class Proto3::WKT::Value {
         return undef unless ref $value eq 'HASH';
 
         return undef if exists $value->{null_value};
-        return $value->{number_value} + 0 if exists $value->{number_value};
+        if ( exists $value->{number_value} ) {
+            my $n = $value->{number_value} + 0;
+            # A google.protobuf.Value's number_value is a JSON number, and JSON
+            # has no NaN/Infinity literal: a Value wrapping NaN or +/-Inf cannot
+            # be serialized (ValueRejectNanNumberValue/ValueRejectInfNumberValue).
+            if ( $n != $n || $n == 9**9**9 || $n == -9**9**9 ) {
+                Proto3::Exception::JSON::WKT->throw(
+                    message => 'google.protobuf.Value number_value '
+                        . 'cannot be NaN or Infinity in JSON',
+                );
+            }
+            return $n;
+        }
         return "$value->{string_value}"   if exists $value->{string_value};
         return $value->{bool_value}
             ? JSON::PP::true

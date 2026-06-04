@@ -82,6 +82,19 @@ class Proto3::Schema::Field {
         return 'length_prefixed';
     }
 
+    # The field's effective string UTF-8 validation: 'VERIFY' or 'NONE'. A
+    # proto3 (and editions-default) string field VERIFYs that its wire octets are
+    # valid UTF-8 and rejects a payload that is not; a proto2 string does NOT
+    # (NONE). Driven by the resolved utf8_validation feature; before resolution
+    # the field defaults to NONE (no rejection) so a directly-built schema with
+    # no feature pass keeps today's lenient behavior.
+    method utf8_validation {
+        if ( $self->_features_resolved ) {
+            return $features->utf8_validation eq 'VERIFY' ? 'VERIFY' : 'NONE';
+        }
+        return 'NONE';
+    }
+
     # True for a TYPE_GROUP field (modeled as a delimited message).
     method is_group { $group_encoded ? 1 : 0 }
 
