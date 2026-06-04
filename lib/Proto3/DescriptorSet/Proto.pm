@@ -103,9 +103,12 @@ class Proto3::DescriptorSet::Proto {
                 Proto3::DescriptorSet::Proto::_rep_scalar( 'dependency',    3,  'string' ),
                 Proto3::DescriptorSet::Proto::_rep_message( 'message_type', 4,  "$G.DescriptorProto" ),
                 Proto3::DescriptorSet::Proto::_rep_message( 'enum_type',    5,  "$G.EnumDescriptorProto" ),
+                Proto3::DescriptorSet::Proto::_rep_message( 'extension',    7,  "$G.FieldDescriptorProto" ),
+                Proto3::DescriptorSet::Proto::_message( 'options',          8,  "$G.FileOptions" ),
                 Proto3::DescriptorSet::Proto::_rep_scalar( 'public_dependency', 10, 'int32' ),
                 Proto3::DescriptorSet::Proto::_rep_scalar( 'weak_dependency',   11, 'int32' ),
                 Proto3::DescriptorSet::Proto::_scalar( 'syntax',            12, 'string' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'edition',           14, 'int32' ),  # Edition enum
             ],
         );
 
@@ -117,11 +120,23 @@ class Proto3::DescriptorSet::Proto {
                 Proto3::DescriptorSet::Proto::_rep_message( 'field',     2, "$G.FieldDescriptorProto" ),
                 Proto3::DescriptorSet::Proto::_rep_message( 'nested_type', 3, "$G.DescriptorProto" ),
                 Proto3::DescriptorSet::Proto::_rep_message( 'enum_type', 4, "$G.EnumDescriptorProto" ),
+                Proto3::DescriptorSet::Proto::_rep_message( 'extension_range', 5,
+                    "$G.DescriptorProto.ExtensionRange" ),
+                Proto3::DescriptorSet::Proto::_rep_message( 'extension', 6, "$G.FieldDescriptorProto" ),
                 Proto3::DescriptorSet::Proto::_message( 'options',       7, "$G.MessageOptions" ),
                 Proto3::DescriptorSet::Proto::_rep_message( 'oneof_decl', 8, "$G.OneofDescriptorProto" ),
                 Proto3::DescriptorSet::Proto::_rep_message( 'reserved_range', 9,
                     "$G.DescriptorProto.ReservedRange" ),
                 Proto3::DescriptorSet::Proto::_rep_scalar( 'reserved_name', 10, 'string' ),
+            ],
+        );
+
+        my $extension_range = Proto3::Schema::Message->new(
+            name      => 'ExtensionRange',
+            full_name => "$G.DescriptorProto.ExtensionRange",
+            fields    => [
+                Proto3::DescriptorSet::Proto::_scalar( 'start', 1, 'int32' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'end',   2, 'int32' ),
             ],
         );
 
@@ -138,7 +153,46 @@ class Proto3::DescriptorSet::Proto {
             name      => 'MessageOptions',
             full_name => "$G.MessageOptions",
             fields    => [
+                Proto3::DescriptorSet::Proto::_scalar( 'message_set_wire_format', 1, 'bool' ),
                 Proto3::DescriptorSet::Proto::_scalar( 'map_entry', 7, 'bool' ),
+                Proto3::DescriptorSet::Proto::_message( 'features', 12, "$G.FeatureSet" ),
+            ],
+        );
+
+        # FileOptions: only the features sub-message is consumed (file-level
+        # editions feature overrides like message_encoding=DELIMITED).
+        my $file_options = Proto3::Schema::Message->new(
+            name      => 'FileOptions',
+            full_name => "$G.FileOptions",
+            fields    => [
+                Proto3::DescriptorSet::Proto::_message( 'features', 50, "$G.FeatureSet" ),
+            ],
+        );
+
+        # FieldOptions: the packed flag (proto2 [packed=...]) and per-field
+        # editions feature overrides.
+        my $field_options = Proto3::Schema::Message->new(
+            name      => 'FieldOptions',
+            full_name => "$G.FieldOptions",
+            fields    => [
+                Proto3::DescriptorSet::Proto::_scalar( 'packed', 2, 'bool' ),
+                Proto3::DescriptorSet::Proto::_message( 'features', 21, "$G.FeatureSet" ),
+            ],
+        );
+
+        # FeatureSet: the six editions features, each an int32 enum (see the
+        # enum-value tables in Proto3::DescriptorSet). Only the values the loader
+        # reads are modeled.
+        my $feature_set = Proto3::Schema::Message->new(
+            name      => 'FeatureSet',
+            full_name => "$G.FeatureSet",
+            fields    => [
+                Proto3::DescriptorSet::Proto::_scalar( 'field_presence',          1, 'int32' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'enum_type',               2, 'int32' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'repeated_field_encoding', 3, 'int32' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'utf8_validation',         4, 'int32' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'message_encoding',        5, 'int32' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'json_format',             6, 'int32' ),
             ],
         );
 
@@ -147,10 +201,13 @@ class Proto3::DescriptorSet::Proto {
             full_name => "$G.FieldDescriptorProto",
             fields    => [
                 Proto3::DescriptorSet::Proto::_scalar( 'name',            1,  'string' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'extendee',        2,  'string' ),
                 Proto3::DescriptorSet::Proto::_scalar( 'number',          3,  'int32' ),
                 Proto3::DescriptorSet::Proto::_scalar( 'label',           4,  'int32' ),  # Label enum
                 Proto3::DescriptorSet::Proto::_scalar( 'type',            5,  'int32' ),  # Type enum
                 Proto3::DescriptorSet::Proto::_scalar( 'type_name',       6,  'string' ),
+                Proto3::DescriptorSet::Proto::_scalar( 'default_value',   7,  'string' ),
+                Proto3::DescriptorSet::Proto::_message( 'options',        8,  "$G.FieldOptions" ),
                 Proto3::DescriptorSet::Proto::_scalar( 'oneof_index',     9,  'int32' ),
                 Proto3::DescriptorSet::Proto::_scalar( 'json_name',       10, 'string' ),
                 Proto3::DescriptorSet::Proto::_scalar( 'proto3_optional', 17, 'bool' ),
@@ -172,6 +229,7 @@ class Proto3::DescriptorSet::Proto {
             full_name => "$G.EnumOptions",
             fields    => [
                 Proto3::DescriptorSet::Proto::_scalar( 'allow_alias', 2, 'bool' ),
+                Proto3::DescriptorSet::Proto::_message( 'features', 7, "$G.FeatureSet" ),
             ],
         );
 
@@ -181,6 +239,15 @@ class Proto3::DescriptorSet::Proto {
             fields    => [
                 Proto3::DescriptorSet::Proto::_scalar( 'name',   1, 'string' ),
                 Proto3::DescriptorSet::Proto::_scalar( 'number', 2, 'int32' ),
+                Proto3::DescriptorSet::Proto::_message( 'options', 3, "$G.EnumValueOptions" ),
+            ],
+        );
+
+        my $enum_value_options = Proto3::Schema::Message->new(
+            name      => 'EnumValueOptions',
+            full_name => "$G.EnumValueOptions",
+            fields    => [
+                Proto3::DescriptorSet::Proto::_message( 'features', 2, "$G.FeatureSet" ),
             ],
         );
 
@@ -199,12 +266,17 @@ class Proto3::DescriptorSet::Proto {
                 $file_descriptor_set,
                 $file_descriptor_proto,
                 $descriptor_proto,
+                $extension_range,
                 $reserved_range,
                 $message_options,
+                $file_options,
+                $field_options,
+                $feature_set,
                 $field_descriptor_proto,
                 $enum_descriptor_proto,
                 $enum_options,
                 $enum_value_descriptor_proto,
+                $enum_value_options,
                 $oneof_descriptor_proto,
             ],
         );

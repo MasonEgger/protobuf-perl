@@ -39,10 +39,45 @@ my %TYPE_ENUM_TO_STRING = (
     18 => 'sint64',
 );
 
-# FieldDescriptorProto.Label.LABEL_REPEATED — the only label that changes our
-# field model (singular vs repeated); LABEL_OPTIONAL/LABEL_REQUIRED collapse to
-# 'singular' for proto3. A pre-class lexical (scoping trap, as above).
+# FieldDescriptorProto.Label values. LABEL_REPEATED maps to a repeated field;
+# LABEL_REQUIRED (proto2/editions only) maps to legacy_required presence;
+# LABEL_OPTIONAL is the default singular/explicit case. Pre-class lexicals
+# (scoping trap, as above).
+my $LABEL_OPTIONAL = 1;
+my $LABEL_REQUIRED = 2;
 my $LABEL_REPEATED = 3;
+
+# FieldDescriptorProto.Type.TYPE_GROUP — a tag-delimited aggregate. Modeled as a
+# delimited message so the codec has a single message path (spec §E).
+my $TYPE_GROUP = 10;
+
+# FileDescriptorProto.Edition enum -> our File.edition string. Only the editions
+# the conformance protos use are mapped; proto2/proto3 syntax files carry no
+# edition and fall back to their syntax string. EDITION_2023 = 1000.
+my %EDITION_ENUM_TO_STRING = (
+    1000 => '2023',
+);
+
+# FeatureSet enum-int -> feature-value string tables, transcribed from
+# descriptor.proto's FeatureSet sub-enums. Each maps a decoded int32 to the
+# override-value string Schema::Features understands. Pre-class lexicals.
+my %FIELD_PRESENCE = ( 1 => 'EXPLICIT', 2 => 'IMPLICIT', 3 => 'LEGACY_REQUIRED' );
+my %ENUM_TYPE      = ( 1 => 'OPEN', 2 => 'CLOSED' );
+my %REPEATED_ENC   = ( 1 => 'PACKED', 2 => 'EXPANDED' );
+my %UTF8_VALIDATION = ( 2 => 'VERIFY', 3 => 'NONE' );
+my %MESSAGE_ENC    = ( 1 => 'LENGTH_PREFIXED', 2 => 'DELIMITED' );
+my %JSON_FORMAT    = ( 1 => 'ALLOW', 2 => 'LEGACY_BEST_EFFORT' );
+
+# Maps a FeatureSet key to its enum-int -> string table. Keys absent from a
+# decoded FeatureSet are simply not overridden (edition defaults stand).
+my %FEATURE_TABLE = (
+    field_presence          => \%FIELD_PRESENCE,
+    enum_type               => \%ENUM_TYPE,
+    repeated_field_encoding => \%REPEATED_ENC,
+    utf8_validation         => \%UTF8_VALIDATION,
+    message_encoding        => \%MESSAGE_ENC,
+    json_format             => \%JSON_FORMAT,
+);
 
 class Proto3::DescriptorSet {
 
@@ -102,8 +137,38 @@ class Proto3::DescriptorSet {
     }
 }
 
+# Convert a decoded FeatureSet hashref (enum ints) into a Schema feature-override
+# hashref (value strings). Unset features are omitted so edition defaults stand.
+# Returns an empty hashref when $feature_set is undef.
+sub Proto3::DescriptorSet::_features_override {
+    my ($feature_set) = @_;
+    return {} unless defined $feature_set;
+
+    my %override;
+    for my $key ( keys %FEATURE_TABLE ) {
+        next unless defined $feature_set->{$key};
+        my $str = $FEATURE_TABLE{$key}{ $feature_set->{$key} };
+        $override{$key} = $str if defined $str;
+    }
+    return \%override;
+}
+
+# Map a decoded FileDescriptorProto's edition enum + syntax to our File.edition
+# string ('proto2'/'proto3'/'2023'). A file with a known edition enum wins;
+# otherwise the legacy syntax is the edition. protoc omits the syntax field for
+# proto2 files (proto2 is the wire default), so an absent syntax means proto2.
+sub Proto3::DescriptorSet::_file_edition {
+    my ($file_desc) = @_;
+    my $edition_num = $file_desc->{edition};
+    if ( defined $edition_num && exists $EDITION_ENUM_TO_STRING{$edition_num} ) {
+        return $EDITION_ENUM_TO_STRING{$edition_num};
+    }
+    return $file_desc->{syntax} // 'proto2';
+}
+
 # Build a Schema::File from a decoded FileDescriptorProto hashref. The scope for
-# top-level definitions is the file package.
+# top-level definitions is the file package. File-level `extension` declarations
+# are attached to a synthetic placeholder so the resolver registers them.
 sub Proto3::DescriptorSet::_build_file {
     my ($file_desc) = @_;
     my $package = $file_desc->{package} // '';
@@ -116,10 +181,34 @@ sub Proto3::DescriptorSet::_build_file {
         map { Proto3::DescriptorSet::_build_enum( $_, $package ) }
         @{ $file_desc->{enum_type} // [] };
 
+    # File-level extension fields (`extend Foo { ... }` at file scope). The
+    # resolver's feature pass only walks message `extensions` lists, so a
+    # synthetic, never-referenced carrier message holds the file-level extensions
+    # and is registered for resolution. Its full_name is namespaced under the
+    # file name so it cannot collide with a real message (file names are unique
+    # within an FDS).
+    my @file_extensions =
+        map { Proto3::DescriptorSet::_build_field( $_, {}, {}, is_extension => 1 ) }
+        @{ $file_desc->{extension} // [] };
+
+    if (@file_extensions) {
+        my $carrier = '$file_extensions$:' . ( $file_desc->{name} // '' );
+        push @messages, Proto3::Schema::Message->new(
+            name       => $carrier,
+            full_name  => $carrier,
+            extensions => \@file_extensions,
+        );
+    }
+
     return Proto3::Schema::File->new(
         name     => $file_desc->{name} // '',
         package  => $package,
-        syntax   => $file_desc->{syntax} // 'proto3',
+        # protoc omits syntax for proto2 files (proto2 is the default).
+        syntax   => $file_desc->{syntax} // 'proto2',
+        edition  => Proto3::DescriptorSet::_file_edition($file_desc),
+        features => Proto3::DescriptorSet::_features_override(
+            $file_desc->{options}{features}
+        ),
         messages => \@messages,
         enums    => \@enums,
     );
@@ -179,6 +268,17 @@ sub Proto3::DescriptorSet::_build_message {
     my @nested_enums =
         map { Proto3::DescriptorSet::_build_enum( $_, $full_name ) } @{ $desc->{enum_type} // [] };
 
+    # Nested `extend Foo { ... }` declarations inside this message. Registered on
+    # their extendee by the resolver's feature pass.
+    my @extensions =
+        map { Proto3::DescriptorSet::_build_field( $_, {}, {}, is_extension => 1 ) }
+        @{ $desc->{extension} // [] };
+
+    # Extension ranges: [start, end) pairs from the descriptor's extension_range.
+    my @extension_ranges =
+        map { [ $_->{start}, $_->{end} ] }
+        @{ $desc->{extension_range} // [] };
+
     return Proto3::Schema::Message->new(
         name            => $name,
         full_name       => $full_name,
@@ -186,8 +286,15 @@ sub Proto3::DescriptorSet::_build_message {
         oneofs          => \@oneofs,
         nested_messages => \@nested,
         nested_enums    => \@nested_enums,
+        extensions      => \@extensions,
+        extension_ranges => \@extension_ranges,
+        message_set_wire_format =>
+            ( $desc->{options}{message_set_wire_format} // 0 ) ? 1 : 0,
         reserved_names  => [ @{ $desc->{reserved_name} // [] } ],
         is_map_entry    => ( $desc->{options}{map_entry} // 0 ) ? 1 : 0,
+        features => Proto3::DescriptorSet::_features_override(
+            $desc->{options}{features}
+        ),
     );
 }
 
@@ -209,12 +316,17 @@ sub Proto3::DescriptorSet::_synthetic_oneof_indexes {
 # $synthetic_oneof maps synthetic oneof indexes to 1 so a proto3 `optional`
 # field is modeled with the 'optional' label rather than as a oneof member.
 # $map_entry_name maps the fully-qualified names of nested MapEntry messages to
-# 1, so a field referencing one is tagged as a map field.
+# 1, so a field referencing one is tagged as a map field. %opts may carry
+# is_extension => 1 for `extend`-declared fields.
 sub Proto3::DescriptorSet::_build_field {
-    my ( $desc, $synthetic_oneof, $map_entry_name ) = @_;
+    my ( $desc, $synthetic_oneof, $map_entry_name, %opts ) = @_;
 
-    my $type_num = $desc->{type};
-    my $type = defined $type_num ? $TYPE_ENUM_TO_STRING{$type_num} : undef;
+    # TYPE_GROUP (10) is a tag-delimited aggregate: model it as a message with
+    # delimited message_encoding so the codec keeps a single message path.
+    my $type_num    = $desc->{type};
+    my $is_group    = defined $type_num && $type_num == $TYPE_GROUP;
+    my $lookup_type = $is_group ? 11 : $type_num;    # TYPE_MESSAGE
+    my $type = defined $lookup_type ? $TYPE_ENUM_TO_STRING{$lookup_type} : undef;
     if ( !defined $type ) {
         Proto3::Exception::Codec->throw(
             message => sprintf(
@@ -230,9 +342,9 @@ sub Proto3::DescriptorSet::_build_field {
     my $oneof_index = $desc->{oneof_index};
     my $is_synthetic = defined $oneof_index && $synthetic_oneof->{$oneof_index};
 
+    my $label_num = $desc->{label};
     my $label =
-        ( defined $desc->{label} && $desc->{label} == $LABEL_REPEATED )
-        ? 'repeated'
+          ( defined $label_num && $label_num == $LABEL_REPEATED ) ? 'repeated'
         : $is_synthetic ? 'optional'
         :                 'singular';
 
@@ -244,6 +356,17 @@ sub Proto3::DescriptorSet::_build_field {
         $map_entry = $fq if $map_entry_name->{$fq};
     }
 
+    # Feature overrides: field-level FieldOptions.features, plus a synthesized
+    # field_presence=LEGACY_REQUIRED for a proto2/editions `required` field so
+    # the resolved presence is 'legacy_required'. The explicit option wins if
+    # both are present (it won't be — required predates field_presence).
+    my $features = Proto3::DescriptorSet::_features_override(
+        $desc->{options}{features}
+    );
+    if ( defined $label_num && $label_num == $LABEL_REQUIRED ) {
+        $features->{field_presence} //= 'LEGACY_REQUIRED';
+    }
+
     return Proto3::Schema::Field->new(
         name        => $desc->{name} // '',
         number      => $desc->{number},
@@ -253,6 +376,12 @@ sub Proto3::DescriptorSet::_build_field {
         json_name   => $desc->{json_name},
         map_entry   => $map_entry,
         oneof_index => $is_synthetic ? undef : $oneof_index,
+        default_value => $desc->{default_value},
+        extendee      => $desc->{extendee},
+        is_extension  => $opts{is_extension} ? 1 : 0,
+        packed        => $desc->{options}{packed},
+        group_encoded => $is_group ? 1 : 0,
+        features      => $features,
     );
 }
 
@@ -273,6 +402,9 @@ sub Proto3::DescriptorSet::_build_enum {
         full_name   => $full_name,
         values      => \@values,
         allow_alias => ( $desc->{options}{allow_alias} // 0 ) ? 1 : 0,
+        features    => Proto3::DescriptorSet::_features_override(
+            $desc->{options}{features}
+        ),
     );
 }
 

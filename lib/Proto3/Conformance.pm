@@ -39,7 +39,7 @@ my $fds_path = do {
         # directories up from lib/Proto3.
         my $root = File::Spec->catdir( $vol . $dir, File::Spec->updir,
             File::Spec->updir );
-        return File::Spec->catfile( $root, 'share', 'proto', 'conformance.fds' );
+        return File::Spec->catfile( $root, 'share', 'proto', 'conformance-v34.fds' );
     };
 };
 

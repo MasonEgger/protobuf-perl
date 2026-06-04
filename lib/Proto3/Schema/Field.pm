@@ -35,6 +35,9 @@ class Proto3::Schema::Field {
     field $features      :param = {};               # explicit feature overrides;
                                                     # replaced with the resolved
                                                     # FeatureSet by the resolver
+    field $group_encoded :param = 0;                # TYPE_GROUP: force delimited
+                                                    # message_encoding regardless
+                                                    # of resolved features
 
     # Explicit reader methods: this Perl 5.38.2 build supports :param but not
     # the :reader field attribute.
@@ -63,6 +66,24 @@ class Proto3::Schema::Field {
     # effective Proto3::Schema::Features. Idempotent like set_type_ref: storing
     # the same resolved set twice preserves identity.
     method set_features ($resolved) { $features = $resolved; return $self; }
+
+    # The field's effective message wire encoding: 'delimited' or
+    # 'length_prefixed'. A TYPE_GROUP field is always delimited (the group wire
+    # format); otherwise the resolved message_encoding feature decides (editions
+    # DELIMITED -> 'delimited'). Before resolution it defaults to
+    # 'length_prefixed' unless group-forced.
+    method message_encoding {
+        return 'delimited' if $group_encoded;
+        if ( $self->_features_resolved ) {
+            return $features->message_encoding eq 'DELIMITED'
+                ? 'delimited'
+                : 'length_prefixed';
+        }
+        return 'length_prefixed';
+    }
+
+    # True for a TYPE_GROUP field (modeled as a delimited message).
+    method is_group { $group_encoded ? 1 : 0 }
 
     method is_message  { $type eq 'message' }
     method is_enum     { $type eq 'enum' }
