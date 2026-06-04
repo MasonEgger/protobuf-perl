@@ -81,6 +81,31 @@ END
     );
 }
 
+# proto2 and editions failures count too — the library targets the full matrix,
+# so a Required.Proto2 or Required.Editions failure is just as fatal as proto3.
+{
+    my $output = <<'END';
+ERROR, test=Required.Proto2.ProtobufInput.ValidDataMap.INT32.INT32: boom
+ERROR, test=Recommended.Proto2.JsonInput.FieldNameExtension: meh
+ERROR, test=Required.Editions.Proto3.Foo: boom
+CONFORMANCE SUITE FAILED: 5 successes, 0 skipped, 0 expected failures, 3 unexpected failures.
+END
+    my $v = Proto3::Conformance::parse_runner_output($output);
+    is_deeply(
+        [ sort @{ $v->{required_failures} } ],
+        [
+            'Required.Editions.Proto3.Foo',
+            'Required.Proto2.ProtobufInput.ValidDataMap.INT32.INT32',
+        ],
+        'proto2 + editions required failures captured (not just proto3)',
+    );
+    is_deeply(
+        $v->{recommended_failures},
+        ['Recommended.Proto2.JsonInput.FieldNameExtension'],
+        'proto2 recommended failure captured',
+    );
+}
+
 # find_runner returns undef when nothing is on PATH and the env var is unset.
 {
     local $ENV{CONFORMANCE_TEST_RUNNER};
@@ -104,14 +129,15 @@ END
 # ----------------------------------------------------------------------
 my $runner = Proto3::Conformance::find_runner();
 SKIP: {
-    skip 'conformance_test_runner not available (set CONFORMANCE_TEST_RUNNER to run)', 2
+    skip 'conformance_test_runner not available (set CONFORMANCE_TEST_RUNNER to run)', 3
         unless defined $runner;
 
     my $testee = 'bin/proto3-conformance';
     ok( -x $testee, "testee $testee is executable" );
 
-    # Run the suite with recommended tests enforced so the output reports the
-    # recommended count too. Capture combined stdout+stderr for parsing.
+    # Run the full suite with recommended tests enforced. The library targets
+    # complete conformance across proto2, proto3, and editions, so the bar is
+    # zero required AND zero recommended failures (T-conf-1/2).
     my $cmd = sprintf(
         '%s --enforce_recommended %s 2>&1',
         $runner, $testee,
@@ -121,12 +147,14 @@ SKIP: {
 
     my $v = Proto3::Conformance::parse_runner_output($output);
 
-    my $rec = scalar @{ $v->{recommended_failures} };
-    diag("recommended proto3 failures: $rec (non-blocking)");
-
     is_deeply( $v->{required_failures}, [],
-        'live run: zero required proto3 failures (T-conf-1)' )
+        'live run: zero required failures across all syntaxes (T-conf-1)' )
         or diag( 'required failures: ' . join( ', ', @{ $v->{required_failures} } ) );
+
+    is_deeply( $v->{recommended_failures}, [],
+        'live run: zero recommended failures (--enforce_recommended, T-conf-2)' )
+        or diag( 'recommended failures: '
+            . join( ', ', @{ $v->{recommended_failures} } ) );
 }
 
 done_testing;

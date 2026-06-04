@@ -210,6 +210,13 @@ class Proto3::JSON {
         for my $field ( @{ $message->fields } ) {
             $self->_encode_field( $field, $values, $opts, \%out );
         }
+        # Re-emit any extensions carried from a prior JSON decode under their
+        # bracketed fully-qualified keys (proto2 extension JSON form).
+        if ( my $ext = $values->{'__json_extensions__'} ) {
+            for my $key ( keys %$ext ) {
+                $out{$key} = $ext->{$key} if defined $ext->{$key};
+            }
+        }
         return \%out;
     }
 
@@ -574,10 +581,37 @@ class Proto3::JSON {
             $field_by_key{ $snake_case->($json_name) } = $field;
         }
 
+        # proto2 extensions appear in JSON under a bracketed fully-qualified key,
+        # e.g. "[protobuf_test_messages.proto2.extension_int32]". Index the
+        # message's registered extensions by that bracket form so such a key
+        # resolves to the extension field.
+        my %extension_by_key;
+        for my $ext ( @{ $schema->extensions_for($full_name) } ) {
+            my $ext_full = $message->full_name =~ s/\.[^.]+$//r;
+            # The extension's fully-qualified name is its declaring scope's
+            # package + the extension field name; the registry field carries the
+            # extendee, so build the key from the extension's own full name when
+            # available, else from the extendee's package + ext name.
+            my $fq = $ext->can('full_name') && $ext->full_name
+                ? $ext->full_name
+                : ( $full_name =~ s/\.[^.]+$//r ) . '.' . $ext->name;
+            $extension_by_key{"[$fq]"} = $ext;
+        }
+
         my %out;
         my %oneof_seen;    # oneof_index -> the field name already taken
         my %field_seen;    # field name -> the JSON key that already named it
+        my %ext_values;    # bracket-key -> decoded extension value
         for my $key ( keys %$json ) {
+            # A bracketed extension key: decode its value by the extension's type
+            # and stash it for re-emission under the same key.
+            if ( my $ext = $extension_by_key{$key} ) {
+                my $v = $json->{$key};
+                $ext_values{$key} =
+                    defined $v ? $self->_decode_element( $ext, $v, $opts ) : undef;
+                next;
+            }
+
             my $field = $field_by_key{$key};
 
             # Two distinct JSON keys that resolve to the SAME field (e.g. the
@@ -632,6 +666,9 @@ class Proto3::JSON {
             next if !defined $decoded && $field->is_enum && !$field->is_repeated;
             $out{ $field->name } = $decoded;
         }
+        # Carry any decoded extensions under a sidecar key so a JSON round-trip
+        # (decode then encode) re-emits them under their bracketed names.
+        $out{'__json_extensions__'} = \%ext_values if %ext_values;
         return \%out;
     }
 

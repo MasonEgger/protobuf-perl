@@ -226,18 +226,19 @@ sub Proto3::Conformance::parse_runner_output {
             next;
         }
 
-        # Per-test failure lines name the test; the conformance suite prefixes
-        # proto3 required tests with "Required.Proto3" and recommended ones with
-        # "Recommended.Proto3". Match the test name wherever it appears.
-        next unless $line =~ /\btest=(\S+?):/ or $line =~ /\b(Re(?:quired|commended)\.Proto3\.\S+)/;
+        # Per-test failure lines name the test, e.g.
+        #   ERROR, test=Required.Proto2.ProtobufInput...: <msg>
+        # The suite prefixes every test with Required. or Recommended., across
+        # all syntaxes (Proto2, Proto3, and the editions families). The library
+        # supports the full matrix, so EVERY required failure is fatal and every
+        # recommended failure is reported — not just proto3.
+        next unless $line =~ /^ERROR,\s*test=(\S+?):/;
         my $test = $1;
-        # Strip a trailing colon left by the first alternation's capture.
-        $test =~ s/:$//;
 
-        if ( $test =~ /^Required\.Proto3\./ ) {
+        if ( $test =~ /^Required\./ ) {
             push @required, $test;
         }
-        elsif ( $test =~ /^Recommended\.Proto3\./ ) {
+        elsif ( $test =~ /^Recommended\./ ) {
             push @recommended, $test;
         }
     }

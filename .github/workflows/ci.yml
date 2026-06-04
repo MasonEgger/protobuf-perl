@@ -1,11 +1,17 @@
-# ABOUTME: GitHub Actions CI for Proto3 — matrix over Perl versions and OSes.
-# Source of truth for supported environments (spec section 6).
+# ABOUTME: GitHub Actions CI for Proto3 — unit matrix plus the full protobuf
+# conformance gate (proto2 + proto3 + editions) against the v34 suite.
 name: CI
 
+# Pre-flight gate for every change: any push to any branch, and every pull
+# request (including from forks / external contributors). The conformance job
+# only reads + uploads an artifact, so a fork PR's read-only token is fine.
 on:
   push:
-    branches: [main, v1]
   pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -36,8 +42,15 @@ jobs:
         run: just check
 
   conformance:
-    name: conformance suite (proto3)
+    name: conformance suite (v34, proto2 + proto3 + editions)
     runs-on: ubuntu-latest
+    env:
+      # The protobuf release whose conformance_test_runner drives the testee.
+      # The prebuilt runner ships in the protobuf-conformance npm package, so no
+      # source build is needed. Bump in one place to re-gate against a newer
+      # suite (the vendored share/proto/conformance-v34.fds must match — see
+      # share/proto/REGEN-conformance-fds.md).
+      CONFORMANCE_VERSION: '34.1.0'
     steps:
       - uses: actions/checkout@v4
 
@@ -46,32 +59,60 @@ jobs:
         with:
           perl-version: '5.38'
 
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake protobuf-compiler libprotoc-dev
+      - name: Set up Node (for the prebuilt conformance runner)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Install Perl deps
         run: cpanm --notest --installdeps .
 
-      # Build Google's conformance_test_runner from the protobuf source. The
-      # built binary becomes the testee driver; CONFORMANCE_TEST_RUNNER points
-      # t/conformance/run_suite.t at it so the live stage actually runs (spec §6).
-      - name: Build conformance_test_runner
+      # The official protobuf-conformance npm package ships a prebuilt
+      # conformance_test_runner binary (no Abseil/source build). Install it and
+      # point the harness at the linux-x64 binary.
+      - name: Install the prebuilt conformance runner
         run: |
-          PROTOBUF_REF="v25.9"
-          git clone --depth 1 --branch "$PROTOBUF_REF" \
-            https://github.com/protocolbuffers/protobuf.git "$RUNNER_TEMP/protobuf"
-          cmake -S "$RUNNER_TEMP/protobuf" -B "$RUNNER_TEMP/protobuf/build" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -Dprotobuf_BUILD_CONFORMANCE=ON \
-            -Dprotobuf_BUILD_TESTS=OFF \
-            -Dprotobuf_ABSL_PROVIDER=module
-          cmake --build "$RUNNER_TEMP/protobuf/build" --target conformance_test_runner -j"$(nproc)"
-          echo "CONFORMANCE_TEST_RUNNER=$RUNNER_TEMP/protobuf/build/conformance/conformance_test_runner" >> "$GITHUB_ENV"
+          npm install --no-save "protobuf-conformance@${CONFORMANCE_VERSION}"
+          RUNNER="$PWD/node_modules/protobuf-conformance/bin/conformance_test_runner-linux-x64"
+          chmod +x "$RUNNER"
+          echo "CONFORMANCE_TEST_RUNNER=$RUNNER" >> "$GITHUB_ENV"
 
-      # Required stage: zero required proto3 failures fails the build (T-conf-1).
-      # The recommended-failure count is reported via the test's diag output and
-      # is non-blocking (T-conf-2/3).
+      # Required gate: t/conformance/run_suite.t fails the build on ANY required
+      # failure (proto2/proto3/editions) and, with --enforce_recommended, on any
+      # recommended failure too. Capture the full runner output for the artifact.
       - name: Run conformance suite
-        run: prove -lrv t/conformance/run_suite.t
+        id: conformance
+        run: |
+          set -o pipefail
+          mkdir -p conformance-results
+          prove -lrv t/conformance/run_suite.t 2>&1 \
+            | tee conformance-results/run_suite.log
+
+      - name: Summarize conformance result
+        if: always()
+        run: |
+          LOG=conformance-results/run_suite.log
+          SUMMARY=conformance-results/conformance-summary.txt
+          {
+            echo "# protobuf conformance (v${CONFORMANCE_VERSION})"
+            echo
+            grep -E 'CONFORMANCE SUITE (PASSED|FAILED)' "$LOG" 2>/dev/null | head -1 \
+              || echo "no summary line (build or run error)"
+            echo
+            echo "required failures:    $(grep -cE 'ERROR.*Required\.'    "$LOG" 2>/dev/null || echo 0)"
+            echo "recommended failures: $(grep -cE 'ERROR.*Recommended\.' "$LOG" 2>/dev/null || echo 0)"
+          } | tee "$SUMMARY"
+          {
+            echo '```'
+            cat "$SUMMARY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload conformance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-v${{ env.CONFORMANCE_VERSION }}-${{ github.run_id }}
+          path: conformance-results/
+          if-no-files-found: warn
+          retention-days: 30
