@@ -168,4 +168,28 @@ for my $spec (
     isa_ok $err, 'Proto3::Exception::Wire::Truncated', 'skip_field truncated len type';
 }
 
+# --- skip_group ---------------------------------------------------------
+# skip_group consumes the body of an open group (its SGROUP tag already read)
+# up to and including the matching EGROUP for the given field number, returning
+# the remaining bytes. Nested groups of any field number are skipped too.
+{
+    # Group field 3: contains field 1 varint (08 2a), then EGROUP (1c), then TAIL.
+    #   1c = (3 << 3) | 4  = field 3, EGROUP.
+    my $rest = Proto3::Wire::skip_group( "\x08\x2a\x1cTAIL", 3 );
+    is $rest, "TAIL", 'skip_group consumes a flat group body + EGROUP';
+}
+{
+    # Nested same-numbered group must match the correct EGROUP depth.
+    #   field 3 SGROUP body: [ field 3 SGROUP (1b) ... EGROUP (1c) ] EGROUP (1c)
+    #   inner group body is empty.
+    my $rest = Proto3::Wire::skip_group( "\x1b\x1c\x1cTAIL", 3 );
+    is $rest, "TAIL", 'skip_group matches nested same-field group depth';
+}
+{
+    # An inner length-delimited field inside the group is skipped by payload.
+    #   12 03 61 62 63 = field 2 LEN len-3 "abc", then 1c EGROUP field 3.
+    my $rest = Proto3::Wire::skip_group( "\x12\x03abc\x1cTAIL", 3 );
+    is $rest, "TAIL", 'skip_group skips inner length-delimited fields';
+}
+
 done_testing;

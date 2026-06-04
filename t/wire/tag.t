@@ -61,17 +61,18 @@ use Proto3::Wire::Tag qw(
 }
 
 # ---------------------------------------------------------------------------
-# T-wire-6: decode_tag of a tag whose wire type is 3 (group start) or 4 (group
-# end) raises Proto3::Exception::Wire::DeprecatedGroup; proto3 has no groups.
+# Group wire types 3 (SGROUP) and 4 (EGROUP) are first-class: decode_tag returns
+# them rather than raising, so the codec can handle proto2 groups and editions
+# DELIMITED message encoding. (proto3-only enforcement now lives at the codec/
+# schema layer, not the raw tag layer.)
 # ---------------------------------------------------------------------------
 {
     for my $wire ( 3, 4 ) {
-        # Hand-build the tag varint so encode_tag's own validation doesn't
-        # intercept it: (field 1 << 3) | $wire fits in one byte.
-        my $tag = chr( ( 1 << 3 ) | $wire );
-        eval { decode_tag($tag) };
-        isa_ok( $@, 'Proto3::Exception::Wire::DeprecatedGroup',
-            "decode_tag wire type $wire raises Wire::DeprecatedGroup" );
+        my $tag = encode_tag( 7, $wire );
+        my ( $field, $wt, $rest ) = decode_tag($tag);
+        is( $field, 7,     "decode_tag returns field for group wire $wire" );
+        is( $wt,    $wire, "decode_tag returns wire type $wire (no raise)" );
+        is( $rest,  '',    "decode_tag consumes the whole group tag (wire $wire)" );
     }
 }
 

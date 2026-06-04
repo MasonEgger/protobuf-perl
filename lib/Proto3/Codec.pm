@@ -633,8 +633,14 @@ class Proto3::Codec {
 
             # Unknown field number: drain it by wire type. With preservation on,
             # capture the whole record (tag + payload) verbatim; otherwise drop.
+            # An unknown group (SGROUP) is skipped to its matching EGROUP by
+            # field number, since the group's extent is not knowable from the
+            # wire type alone.
             if ( !$field ) {
-                my $after = Proto3::Wire::skip_field( $wire_type, $rest );
+                my $after =
+                    $wire_type == Proto3::Wire::Tag::WIRE_GROUP_START()
+                    ? Proto3::Wire::skip_group( $rest, $field_number )
+                    : Proto3::Wire::skip_field( $wire_type, $rest );
                 if ($preserve_unknown_fields) {
                     my $consumed = length($record_start) - length($after);
                     $unknown .= substr( $record_start, 0, $consumed );

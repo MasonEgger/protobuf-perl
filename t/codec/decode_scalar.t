@@ -212,16 +212,20 @@ for my $case (@round_trip_cases) {
     );
 }
 
-# --- 11.6: group wire type 3 raises -------------------------------------
-
+# --- 11.6: an unterminated unknown group raises -------------------------
+# Group wire types are now first-class (proto2 groups / editions DELIMITED), so
+# an unknown group field is skipped to its matching EGROUP rather than rejected
+# outright. A bare group-start with no closing EGROUP is malformed and must die
+# as a Wire error (the group is never closed).
 {
     my ( $codec, $full ) = schema_with_message( field_f() );
-    # Tag for field 1, wire type 3 (group start): (1<<3)|3 = 0x0b.
+    # Tag for field 1 (unknown; the known field is 'f'), wire type 3 (group
+    # start): (1<<3)|3 = 0x0b, with no EGROUP following.
     my $err;
     eval { $codec->decode( $full, "\x0b" ); 1 } or $err = $@;
-    ok( $err, '11.6: group wire type 3 dies' );
-    isa_ok( $err, 'Proto3::Exception::Wire::DeprecatedGroup',
-        '11.6: group wire type -> DeprecatedGroup' );
+    ok( $err, '11.6: unterminated group dies' );
+    isa_ok( $err, 'Proto3::Exception::Wire',
+        '11.6: unterminated group -> Wire error' );
 }
 
 # --- 11.7: truncated input propagates Wire::Truncated -------------------

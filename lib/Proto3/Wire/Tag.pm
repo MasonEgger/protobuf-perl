@@ -13,10 +13,11 @@ use Proto3::Wire::Varint qw(encode_varint decode_varint);
 our @EXPORT_OK = qw(
     encode_tag decode_tag
     WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32
+    WIRE_GROUP_START WIRE_GROUP_END
 );
 
-# The four wire types proto3 actually uses. Types 3 (group start) and 4 (group
-# end) are proto2 groups, deprecated and never emitted by proto3.
+# The six protobuf wire types. proto3 uses four of them; types 3/4 (group
+# start/end) carry proto2 groups and editions DELIMITED message encoding.
 use constant {
     WIRE_VARINT => 0,    # int32/64, uint32/64, sint*, bool, enum
     WIRE_I64    => 1,    # fixed64, sfixed64, double
@@ -24,7 +25,9 @@ use constant {
     WIRE_I32    => 5,    # fixed32, sfixed32, float
 };
 
-# Deprecated proto2 group wire types; encountering them on decode is an error.
+# Group wire types: a delimited (group) message is framed by an SGROUP tag and a
+# matching EGROUP tag for the same field number, with the message records in
+# between (no length prefix).
 use constant {
     WIRE_GROUP_START => 3,
     WIRE_GROUP_END   => 4,
@@ -48,17 +51,16 @@ sub encode_tag ( $field_number, $wire_type ) {
 
 # decode_tag($bytes) -> (field_number, wire_type, rest). Decodes the leading tag
 # varint, splitting off the low 3 bits as the wire type and the rest as the
-# field number; returns the remaining bytes untouched. Wire types 3 and 4
-# (deprecated proto2 groups) raise Proto3::Exception::Wire::DeprecatedGroup.
+# field number; returns the remaining bytes untouched. All six wire types are
+# returned, including 3 (SGROUP) and 4 (EGROUP) — proto2 groups and editions
+# DELIMITED message encoding use them. Whether a group is legal in a given
+# message is a schema-layer concern (a proto3 message has none); the raw tag
+# layer is syntax-neutral. Wire types 6 and 7 do not exist and would be a
+# malformed tag, surfaced by the codec when it tries to use them.
 sub decode_tag ($bytes) {
     my ( $tag, $rest ) = decode_varint($bytes);
     my $wire_type    = $tag & 0x7;
     my $field_number = $tag >> 3;
-    if ( $wire_type == WIRE_GROUP_START || $wire_type == WIRE_GROUP_END ) {
-        Proto3::Exception::Wire::DeprecatedGroup->throw( message =>
-                "wire type $wire_type (proto2 group) is not supported in proto3"
-        );
-    }
     return ( $field_number, $wire_type, $rest );
 }
 

@@ -17,6 +17,7 @@ use Proto3::Wire::Varint qw(
 use Proto3::Wire::Tag qw(
     encode_tag decode_tag
     WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32
+    WIRE_GROUP_START WIRE_GROUP_END
 );
 use Proto3::Exception;
 
@@ -30,7 +31,8 @@ our @EXPORT_OK = qw(
     encode_float decode_float
     encode_double decode_double
     WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32
-    skip_field
+    WIRE_GROUP_START WIRE_GROUP_END
+    skip_field skip_group
 );
 
 # True when running on a Perl whose IVs are only 32 bits wide; on such builds
@@ -143,8 +145,51 @@ sub skip_field ($wire_type, $bytes) {
         ( undef, my $tail ) = _take( $rest, $len );
         return $tail;
     }
+    # An SGROUP opens a group whose body runs until the matching EGROUP. Read the
+    # next tag to learn the group's field number, then skip its whole body. (The
+    # group's own field number is on the SGROUP tag the caller already consumed;
+    # when skip_field is reached via an unknown-field skip the body's records
+    # carry their own tags, and skip_group tracks depth by field number.)
+    if ( $wire_type == WIRE_GROUP_START ) {
+        # The caller consumed the SGROUP tag but not its field number, so we
+        # cannot know which EGROUP closes us from $wire_type alone. Group skips
+        # therefore go through skip_group($bytes, $field_number); reaching here
+        # means an SGROUP turned up without a field number, which is a malformed
+        # standalone skip. Surface it as an invalid wire use.
+        Proto3::Exception::Wire::InvalidWireType->throw(
+            message => 'skip_field cannot skip a group without its field number; '
+                . 'use skip_group',
+        );
+    }
     Proto3::Exception::Wire::InvalidWireType->throw(
         message => "unknown wire type $wire_type",
+    );
+}
+
+# skip_group($bytes, $field_number) -> remaining bytes. The opening SGROUP tag
+# for $field_number has already been consumed; $bytes begins at the group body.
+# Consumes records until the EGROUP tag that matches $field_number, handling
+# nested groups (of any field number) by depth, and returns whatever follows the
+# closing EGROUP. Raises Wire::Truncated if the group is never closed.
+sub skip_group ($bytes, $field_number) {
+    while ( length $bytes ) {
+        my ( $f, $wt, $rest ) = decode_tag($bytes);
+        if ( $wt == WIRE_GROUP_END ) {
+            # Matching close for our group.
+            return $rest if $f == $field_number;
+            # An EGROUP for a different field number is malformed nesting.
+            Proto3::Exception::Wire::Truncated->throw(
+                message => "group field $field_number closed by EGROUP for $f",
+            );
+        }
+        if ( $wt == WIRE_GROUP_START ) {
+            $bytes = skip_group( $rest, $f );    # recurse into nested group
+            next;
+        }
+        $bytes = skip_field( $wt, $rest );
+    }
+    Proto3::Exception::Wire::Truncated->throw(
+        message => "group field $field_number not closed by an EGROUP",
     );
 }
 
