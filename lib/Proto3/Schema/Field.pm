@@ -4,6 +4,8 @@ use v5.38;
 use feature 'class';
 no warnings 'experimental::class';
 
+use Scalar::Util ();
+
 # Set of scalar proto3 types eligible for packed repeated encoding. Held as a
 # pre-class lexical so methods can read it without tripping the feature 'class'
 # package-scoping trap (an imported/constant sub would land in the file package,
@@ -16,45 +18,103 @@ my %PACKABLE_SCALAR = map { $_ => 1 } qw(
 );
 
 class Proto3::Schema::Field {
-    field $name        :param;
-    field $number      :param;
-    field $type        :param;                      # 'int32','message','enum',...
-    field $label       :param = 'singular';         # 'singular','repeated','optional'
-    field $type_name   :param = undef;              # raw '.foo.Bar' before resolution
-    field $json_name   :param = undef;
-    field $packed      :param = undef;
-    field $map_entry   :param = undef;              # set for map fields
-    field $oneof_index :param = undef;
-    field $type_ref    :param = undef;              # populated by resolver
-    field $options     :param = {};                 # hashref of field options
+    field $name          :param;
+    field $number        :param;
+    field $type          :param;                    # 'int32','message','enum',...
+    field $label         :param = 'singular';       # 'singular','repeated','optional'
+    field $type_name     :param = undef;            # raw '.foo.Bar' before resolution
+    field $json_name     :param = undef;
+    field $packed        :param = undef;
+    field $map_entry     :param = undef;            # set for map fields
+    field $oneof_index   :param = undef;
+    field $type_ref      :param = undef;            # populated by resolver
+    field $options       :param = {};               # hashref of field options
+    field $default_value :param = undef;            # proto2 [default = ...]
+    field $is_extension  :param = 0;                # `extend` field
+    field $extendee      :param = undef;            # '.foo.Base' extended message
+    field $features      :param = {};               # explicit feature overrides;
+                                                    # replaced with the resolved
+                                                    # FeatureSet by the resolver
 
     # Explicit reader methods: this Perl 5.38.2 build supports :param but not
     # the :reader field attribute.
-    method name        { $name }
-    method number      { $number }
-    method type        { $type }
-    method label       { $label }
-    method type_name   { $type_name }
-    method json_name   { $json_name }
-    method packed      { $packed }
-    method map_entry   { $map_entry }
-    method oneof_index { $oneof_index }
-    method type_ref    { $type_ref }
-    method options     { $options }
+    method name          { $name }
+    method number        { $number }
+    method type          { $type }
+    method label         { $label }
+    method type_name     { $type_name }
+    method json_name     { $json_name }
+    method packed        { $packed }
+    method map_entry     { $map_entry }
+    method oneof_index   { $oneof_index }
+    method type_ref      { $type_ref }
+    method options       { $options }
+    method default_value { $default_value }
+    method is_extension  { $is_extension }
+    method extendee      { $extendee }
+    method features      { $features }
 
     # The ONE post-construction mutation allowed on a Field (spec §4.2): the
     # resolver calls this to link the resolved Schema::Message/Schema::Enum once
     # type-name resolution runs. Every other field stays immutable.
     method set_type_ref ($ref) { $type_ref = $ref; return $self; }
 
+    # The resolver replaces the explicit-override hashref with the field's
+    # effective Proto3::Schema::Features. Idempotent like set_type_ref: storing
+    # the same resolved set twice preserves identity.
+    method set_features ($resolved) { $features = $resolved; return $self; }
+
     method is_message  { $type eq 'message' }
     method is_enum     { $type eq 'enum' }
     method is_repeated { $label eq 'repeated' }
     method is_map      { defined $map_entry }
 
-    # Packed only when explicitly flagged, repeated, and a packable scalar type.
+    # The field's effective presence: 'implicit', 'explicit', or
+    # 'legacy_required'. Driven by resolved features when present; otherwise it
+    # reproduces today's proto3 behavior: a singular scalar is implicit unless
+    # declared `optional` or it sits in a oneof.
+    method presence {
+        if ( $self->_features_resolved ) {
+            return 'legacy_required' if $features->field_presence eq 'LEGACY_REQUIRED';
+            return 'explicit'        if $features->field_presence eq 'EXPLICIT';
+            # IMPLICIT: a field in a oneof or declared `optional` still tracks
+            # presence explicitly even when the edition default is implicit.
+            return 'explicit' if $label eq 'optional' || defined $oneof_index;
+            return 'implicit';
+        }
+        return 'explicit' if $label eq 'optional' || defined $oneof_index;
+        return 'implicit';
+    }
+
+    # True when the field tracks explicit presence (hazzer-style). The codec
+    # uses this to decide default-omit: an implicit field at its type default is
+    # omitted; an explicit-presence field is always written when set.
+    method has_presence { $self->presence ne 'implicit' ? 1 : 0 }
+
+    # Packed when repeated and a packable scalar. When features are resolved the
+    # effective repeated_field_encoding decides (PACKED by default for proto3 /
+    # edition2023; EXPANDED for proto2), with an explicit [packed = false] still
+    # honored. Before resolution this preserves the original Step-6 semantics:
+    # packed only when the explicit `packed` flag is set.
     method is_packed {
-        $packed && $self->is_repeated && $self->_is_packable_scalar;
+        return 0 unless $self->is_repeated && $self->_is_packable_scalar;
+
+        if ( $self->_features_resolved ) {
+            return 0 unless $features->repeated_field_encoding eq 'PACKED';
+            # PACKED edition default still honors an explicit [packed = false].
+            return 0 if defined $packed && !$packed;
+            return 1;
+        }
+
+        # Pre-resolution legacy path: packed only when explicitly flagged.
+        return $packed ? 1 : 0;
+    }
+
+    # Private: have the resolved features been installed (vs. the raw override
+    # hashref a freshly-constructed field carries)?
+    method _features_resolved {
+        Scalar::Util::blessed($features)
+            && $features->isa('Proto3::Schema::Features');
     }
 
     # Private: is this field's type one of the packable scalar wire types?

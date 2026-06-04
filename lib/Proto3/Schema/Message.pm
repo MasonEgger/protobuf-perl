@@ -19,6 +19,10 @@ class Proto3::Schema::Message {
     field $oneof_index     :param = undef;
     field $is_map_entry    :param = 0;      # synthetic map-entry message
     field $options         :param = {};     # hashref of options
+    field $extension_ranges :param = [];    # arrayref of [lo,hi] extension ranges
+    field $extensions      :param = [];     # arrayref of extension Schema::Field decls
+    field $message_set_wire_format :param = 0;   # MessageSet wire-format flag
+    field $features        :param = {};     # explicit message-level feature overrides
 
     # Explicit readers (this Perl build has :param but not :reader).
     method name            { $name }
@@ -32,6 +36,10 @@ class Proto3::Schema::Message {
     method oneof_index     { $oneof_index }
     method is_map_entry    { $is_map_entry }
     method options         { $options }
+    method extension_ranges { $extension_ranges }
+    method extensions      { $extensions }
+    method message_set_wire_format { $message_set_wire_format }
+    method features        { $features }
 
     # Construction invariants: field numbers and field names are each unique
     # within the message.

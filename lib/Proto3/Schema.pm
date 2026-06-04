@@ -6,6 +6,8 @@ no warnings 'experimental::class';
 
 use Proto3::Exception;
 use Proto3::Resolver;
+use Proto3::Schema::Features;
+use Scalar::Util ();
 
 class Proto3::Schema {
 
@@ -14,6 +16,7 @@ class Proto3::Schema {
     field $message_index  = {};
     field $enum_index     = {};
     field $service_index  = {};
+    field $extension_index = {};    # extendee fq-name -> arrayref of extension Fields
     field $resolved       = 0;
 
     # Add a parsed Proto3::Schema::File and index every type it declares
@@ -73,6 +76,12 @@ class Proto3::Schema {
     method all_messages { [ values %$message_index ] }
     method all_enums    { [ values %$enum_index ] }
 
+    # Registered extension Fields for an extended message's fully-qualified name
+    # (no leading dot), or an empty arrayref when none. Populated by resolve.
+    method extensions_for ($extendee_full_name) {
+        return $extension_index->{$extendee_full_name} // [];
+    }
+
     # Link every message/enum-typed field to its resolved Schema::Message or
     # Schema::Enum via the Step 8 resolver, following proto3 scoping. Each field
     # resolves in its owning message's scope: current_package is the declaring
@@ -92,8 +101,85 @@ class Proto3::Schema {
                 for @{ $file->messages };
         }
 
+        # Second pass: fold edition defaults <- file overrides <- field/enum
+        # overrides into an effective FeatureSet on every Field and Enum, derive
+        # closed-enum/presence flags, and build the extension registry. Kept a
+        # separate pass so type-ref resolution above is independent of features.
+        for my $file (@$files) {
+            $self->_resolve_features( $file );
+        }
+
         $resolved = 1;
         return $self;
+    }
+
+    # Resolve the effective FeatureSet for every element a file declares. The
+    # file's own FeatureSet is its edition defaults with the file-level override
+    # merged in; messages/enums/fields inherit it unless they override.
+    method _resolve_features ($file) {
+        my $edition       = $file->edition;
+        my $base          = Proto3::Schema::Features->for_edition($edition);
+        my $file_features = Proto3::Schema::Features->merge( $base, $file->features );
+
+        $self->_resolve_message_features( $_, $file_features )
+            for @{ $file->messages };
+        $self->_resolve_enum_features( $_, $file_features )
+            for @{ $file->enums };
+    }
+
+    # Apply inherited features down through a message's fields, nested enums,
+    # nested messages, and extension declarations, then register extensions.
+    method _resolve_message_features ($message, $parent_features) {
+        # A message may carry its own override; absent one it inherits as-is.
+        my $msg_features = $self->_merge_element_features(
+            $parent_features, $message,
+        );
+
+        for my $field ( @{ $message->fields } ) {
+            $self->_install_field_features( $field, $msg_features );
+        }
+
+        for my $ext ( @{ $message->extensions } ) {
+            $self->_install_field_features( $ext, $msg_features );
+            $self->_register_extension( $ext );
+        }
+
+        $self->_resolve_enum_features( $_, $msg_features )
+            for @{ $message->nested_enums };
+        $self->_resolve_message_features( $_, $msg_features )
+            for @{ $message->nested_messages };
+    }
+
+    # Install a field's effective FeatureSet (parent merged with the field's own
+    # override hashref) via the field's narrow setter.
+    method _install_field_features ($field, $parent_features) {
+        my $effective = $self->_merge_element_features( $parent_features, $field );
+        $field->set_features($effective);
+    }
+
+    method _resolve_enum_features ($enum, $parent_features) {
+        my $effective = $self->_merge_element_features( $parent_features, $enum );
+        $enum->set_features($effective);
+    }
+
+    # Merge an element's explicit feature-override hashref over inherited
+    # parent features. Elements carry overrides as a plain hashref until resolved
+    # (a resolved FeatureSet means already-merged; treat it as no override).
+    method _merge_element_features ($parent_features, $element) {
+        my $override = $element->features;
+        return $parent_features
+            if Scalar::Util::blessed($override)
+            && $override->isa('Proto3::Schema::Features');
+        return Proto3::Schema::Features->merge( $parent_features, $override );
+    }
+
+    # Add an extension Field to the registry under its extendee's fq-name (the
+    # leading dot, if any, stripped).
+    method _register_extension ($ext) {
+        my $extendee = $ext->extendee;
+        return unless defined $extendee;
+        ( my $key = $extendee ) =~ s/^\.//;
+        push @{ $extension_index->{$key} }, $ext;
     }
 
     # Resolve every message/enum-typed field of one message, then recurse into

@@ -13,6 +13,9 @@ class Proto3::Schema::Enum {
     field $values      :param = [];     # arrayref of { name, number }
     field $allow_alias :param = 0;
     field $options     :param = {};
+    field $closed      :param = undef;  # 1=closed (proto2), 0=open (proto3);
+                                        # resolver derives from enum_type feature
+    field $features    :param = {};     # explicit overrides -> resolved FeatureSet
 
     # Explicit readers (this Perl build has :param but not :reader).
     method name        { $name }
@@ -20,6 +23,19 @@ class Proto3::Schema::Enum {
     method values      { $values }
     method allow_alias { $allow_alias }
     method options     { $options }
+    method features    { $features }
+
+    # Closedness: 0 (open) by default — the proto3 default. The resolver sets it
+    # from the effective enum_type feature (CLOSED -> 1) when resolving.
+    method closed { $closed // 0 }
+
+    # The resolver installs the enum's effective FeatureSet and derives the
+    # closed flag from it. Idempotent like the Field setter.
+    method set_features ($resolved) {
+        $features = $resolved;
+        $closed   = $resolved->enum_type eq 'CLOSED' ? 1 : 0;
+        return $self;
+    }
 
     # Construction invariant: without allow_alias, value numbers must be unique.
     ADJUST {

@@ -13,6 +13,15 @@ class Proto3::Schema::File {
     field $syntax   :param = 'proto3';
     field $imports  :param = [];            # arrayref of { path, kind } hashrefs
     field $options  :param = {};            # hashref of file-level options
+    field $edition  :param = undef;         # 'proto2','proto3','2023'; derived from syntax
+    field $features :param = {};            # explicit file-level feature overrides
+
+    # Default the edition from the legacy syntax when not given, preserving
+    # backward compat: a file constructed with only syntax => 'proto3' resolves
+    # to the proto3 edition (and thus proto3 feature defaults).
+    ADJUST {
+        $edition //= $syntax;
+    }
 
     # Explicit readers (this Perl build has :param but not :reader).
     method name     { $name }
@@ -23,6 +32,8 @@ class Proto3::Schema::File {
     method syntax   { $syntax }
     method imports  { $imports }
     method options  { $options }
+    method edition  { $edition }
+    method features { $features }
 }
 
 1;
