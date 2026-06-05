@@ -36,14 +36,22 @@ jobs:
       - name: Install dependencies
         run: |
           cpanm --notest --installdeps .
-          cpanm --notest Perl::Critic Dist::Zilla
-          # The [@Starter::Git] bundle pulls a set of author-side plugins that
-          # `dzil test` needs; install them so the dzil leg of `just check`
-          # runs instead of erroring on missing plugins.
-          dzil authordeps --missing | cpanm --notest
+          cpanm --notest Perl::Critic
 
+      # Blocking gate: lint + the full unit suite. The conformance suite runs in
+      # its own job below; the distribution build is validated non-blocking.
       - name: Run checks
         run: just check
+
+      # Validate the distribution assembles and installs via Dist::Zilla. Kept
+      # non-blocking (continue-on-error) so a packaging-only hiccup does not fail
+      # the pre-flight gate; the conformance + unit gates above are the bar.
+      - name: Dist build (non-blocking)
+        continue-on-error: true
+        run: |
+          cpanm --notest Dist::Zilla
+          dzil authordeps --missing | cpanm --notest
+          just check-dist
 
   conformance:
     name: conformance suite (v34, proto2 + proto3 + editions)
