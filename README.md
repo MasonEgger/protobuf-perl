@@ -1,44 +1,108 @@
 # Proto3
 
-A pure-Perl implementation of Protocol Buffers version 3 (proto3): a wire codec,
-a schema model, a `.proto` parser, the canonical JSON mapping, the well-known
-types, and an ahead-of-time class generator — with **zero install-time XS** and
-no compiler required.
+A pure-Perl implementation of Protocol Buffers: a wire codec, a schema model, a
+`.proto` parser, the canonical JSON mapping, the well-known types, and an
+ahead-of-time class generator — with **zero install-time XS** and no compiler
+required.
+
+Despite the name, it is **not** limited to proto3. It passes the full Google
+Protocol Buffers **conformance suite at protobuf v34** — `proto2`, `proto3`, and
+**editions 2023**, both Required and Recommended (`--enforce_recommended`) — with
+**zero failures**. The `Proto3` name is kept as a brand, in the spirit of `Test2`
+and `JSON::PP`.
+
+```
+CONFORMANCE SUITE PASSED: 2806 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
+```
 
 It was built to parse, resolve, and round-trip the Temporal
 [sdk-core](https://github.com/temporalio/sdk-core) proto graph correctly,
 including the innermost-first cross-file type resolution that trips up some
-existing dynamic Perl protobuf libraries (spec §1).
+existing dynamic Perl protobuf libraries.
+
+## Requirements
+
+- **Perl 5.38 or newer** (it uses the `feature 'class'` syntax).
+- **No XS, no C compiler, no non-core CPAN modules at runtime.** Everything it
+  needs (`Math::BigInt`, `Encode`, `JSON::PP`, `MIME::Base64`, `Scalar::Util`,
+  `File::Spec`, …) ships with core Perl.
+
+## Install from the GitHub repo
+
+This isn't on CPAN yet, so install straight from the repository.
+
+### Option A — cpanm from the Git URL (simplest)
+
+[`cpanm`](https://metacpan.org/pod/App::cpanminus) can install directly from a
+Git remote:
+
+```sh
+cpanm git://github.com/MasonEgger/proto3-perl.git
+# or a specific branch/tag:
+cpanm git://github.com/MasonEgger/proto3-perl.git@v1
+```
+
+This builds the distribution and installs `Proto3`, the `Proto3::*` modules, and
+the `proto3-gen-perl` / `proto3-conformance` scripts into your Perl. Because all
+prerequisites are core, there is nothing else to fetch.
+
+### Option B — clone and install
+
+```sh
+git clone https://github.com/MasonEgger/proto3-perl.git
+cd proto3-perl
+cpanm --installdeps .   # a no-op on a complete core Perl, but safe to run
+cpanm .                 # build + install the distribution
+```
+
+### Option C — clone and run in place (no install)
+
+To use it from a checkout without installing anything, just add `lib/` to the
+include path:
+
+```sh
+git clone https://github.com/MasonEgger/proto3-perl.git
+cd proto3-perl
+perl -Ilib -MProto3 -e 'print "Proto3 $Proto3::VERSION\n"'
+```
+
+In your own code: `use lib '/path/to/proto3-perl/lib';` or run with
+`perl -I/path/to/proto3-perl/lib …` / set `PERL5LIB`.
+
+### Pin it in a `cpanfile`
+
+A downstream project can depend on the Git checkout from its own `cpanfile`:
+
+```perl
+requires 'Proto3',
+    git => 'https://github.com/MasonEgger/proto3-perl.git',
+    ref => 'v1';
+```
 
 ## Features
 
-- **Wire codec** — encode/decode all proto3 scalar, message, enum, repeated,
-  packed, map, and oneof field kinds, with unknown-field preservation.
-- **`.proto` parser** — a hand-written lexer + grammar for proto3 syntax, with
-  transitive import following and cycle detection.
+- **Full wire codec** — encode/decode every field kind across proto2, proto3,
+  and editions: scalars, messages, enums, repeated (packed and expanded), maps,
+  oneofs, **groups** (delimited messages), **extensions** and **MessageSet**,
+  **required** fields, explicit/implicit/`legacy_required` **presence**, **closed
+  vs open enums**, and field **defaults** — with unknown-field preservation.
+- **Editions feature model** — each file/message/field resolves a feature set
+  (presence, enum openness, repeated/message encoding, UTF-8 validation) from the
+  edition defaults plus inherited and explicit overrides.
+- **`.proto` parser** — a hand-written lexer + grammar with transitive import
+  following and cycle detection.
 - **Correct resolver** — fully-qualified type resolution that walks scopes
-  outward one level at a time, matching `protoc` byte-for-byte (spec §4.3).
+  outward one level at a time, matching `protoc` byte-for-byte.
 - **Canonical JSON** — the proto3 JSON mapping, both directions, with
-  deterministic key order.
+  deterministic key order, the well-known-type special forms, and the proto2
+  extension `[fully.qualified.name]` key form.
 - **Well-known types** — `Timestamp`, `Duration`, `Any`, `Struct`/`Value`/
   `ListValue`/`NullValue`, `FieldMask`, `Empty`, and the scalar wrappers.
 - **Runtime classes** — generate Perl classes from a schema at runtime, or
-- **ahead-of-time** with `proto3-gen-perl` for faster startup and static
+  **ahead-of-time** with `proto3-gen-perl` for faster startup and static
   discoverability.
 - **`FileDescriptorSet` support** — load a `protoc`-produced descriptor set
-  instead of parsing `.proto` text.
-
-## Install
-
-This is a Dist::Zilla distribution. From a checkout:
-
-```sh
-cpanm --installdeps .   # install prerequisites (all core in modern Perl)
-dzil install            # or: dzil test, dzil build
-```
-
-Proto3 requires Perl 5.38 or newer (it uses the `class` feature). It depends
-only on modules that ship with core Perl — no XS, no compiler.
+  (including v34 sets with proto2/editions) instead of parsing `.proto` text.
 
 ## Quickstart
 
@@ -64,7 +128,7 @@ my %greeting = ( text => 'Hello, world!', priority => 1 );
 my $bytes   = $codec->encode( 'hello.Greeting', \%greeting );
 my $decoded = $codec->decode( 'hello.Greeting', $bytes );
 
-# Canonical proto3 JSON, both directions.
+# Canonical JSON, both directions.
 my $json = $codec->encode_json( 'hello.Greeting', \%greeting );
 my $back = $codec->decode_json( 'hello.Greeting', $json );
 ```
@@ -92,12 +156,26 @@ A complete, runnable version lives in [`examples/basic/`](examples/basic/):
 perl -Ilib examples/basic/hello.pl
 ```
 
+### Loading a compiled descriptor set
+
+If you already have a `protoc`-produced `FileDescriptorSet` (the
+`--descriptor_set_out` format), skip the parser entirely:
+
+```perl
+use Proto3::DescriptorSet;
+my $schema = Proto3::DescriptorSet->load_file('all.fds');   # already resolved
+my $codec  = Proto3::Codec->new( schema => $schema );
+```
+
+This is the path the conformance testee uses, and it understands proto2 and
+editions descriptor sets, not just proto3.
+
 ## Ahead-of-time code generation
 
 [`bin/proto3-gen-perl`](bin/proto3-gen-perl) reads `.proto` files and emits one
 Perl `.pm` per file — compiled, statically-discoverable message classes for
 projects that want faster startup, IDE autocompletion, and no runtime
-parse-failure surprises (spec §4.12).
+parse-failure surprises.
 
 ```sh
 proto3-gen-perl \
@@ -120,9 +198,42 @@ modules carry **no** parser or descriptor-set dependency (only the schema, codec
 and WKT layers), and the output is **deterministic**: regenerating an unchanged
 `.proto` is byte-identical.
 
+## Conformance
+
+The library passes the full **protobuf v34** conformance suite — `proto2`,
+`proto3`, and **editions 2023**, Required and Recommended — with zero failures.
+
+- The testee binary is [`bin/proto3-conformance`](bin/proto3-conformance); all of
+  its request-handling logic lives in
+  [`Proto3::Conformance`](lib/Proto3/Conformance.pm).
+- The harness [`t/conformance/run_suite.t`](t/conformance/run_suite.t) unit-tests
+  the verdict logic on every run, and drives the real Google
+  `conformance_test_runner` against the testee **when one is available** (set
+  `CONFORMANCE_TEST_RUNNER`, or put `conformance_test_runner` on `PATH`). It
+  skips when no runner is present, so the default test run stays green without
+  the external toolchain.
+- The runner ships prebuilt via the
+  [`protobuf-conformance`](https://www.npmjs.com/package/protobuf-conformance)
+  npm package (no source build needed):
+
+  ```sh
+  npm install protobuf-conformance@34.1.0
+  CONFORMANCE_TEST_RUNNER="$PWD/node_modules/protobuf-conformance/bin/conformance_test_runner-linux-x64" \
+      prove -lr t/conformance/run_suite.t
+  ```
+
+- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the suite
+  as a blocking gate on every push and pull request: any required **or**
+  recommended failure across any syntax fails the build, and the full runner
+  output is uploaded as an artifact.
+
+What is **not** in scope: gRPC, the reflection API, the `edition_unstable` test
+edition, and proto2/editions `.proto`-source parsing (the conformance path uses
+descriptor sets, not the source parser).
+
 ## Temporal sdk-core
 
-The Temporal sdk-core proto graph is the project's proof of purpose (spec §5.2).
+The Temporal sdk-core proto graph is the project's proof of purpose.
 [`examples/temporal/sdk_core_smoke.pl`](examples/temporal/sdk_core_smoke.pl)
 parses, resolves, and round-trips the `WorkflowActivation` and
 `StartWorkflowExecutionRequest` entry points. The sdk-core protos are large and
@@ -138,41 +249,15 @@ The same smoke runs as an integration test in
 [`t/integration/sdk_core.t`](t/integration/sdk_core.t), which `skip_all`s when
 `SDK_CORE_PROTO_PATH` is unset.
 
-## Conformance
-
-Passing the proto3 subset of [Google's Protocol Buffers Conformance Test
-Suite](https://github.com/protocolbuffers/protobuf/tree/main/conformance) is the
-credibility bar for this project (spec §4.11).
-
-- The testee binary is [`bin/proto3-conformance`](bin/proto3-conformance); all of
-  its request-handling logic lives in
-  [`Proto3::Conformance`](lib/Proto3/Conformance.pm).
-- The harness [`t/conformance/run_suite.t`](t/conformance/run_suite.t) unit-tests
-  the runner-output verdict logic on every run, and drives the real Google
-  `conformance_test_runner` against the testee **when one is available** (set the
-  `CONFORMANCE_TEST_RUNNER` environment variable, or put `conformance_test_runner`
-  on `PATH`). When no runner is present it skips, so `just test` stays green
-  without the external toolchain installed.
-- **CI** (the `conformance` job in
-  [`.github/workflows/ci.yml`](.github/workflows/ci.yml)) builds
-  `conformance_test_runner` from the protobuf source and runs the suite as a
-  **required** stage: any failing `Required.Proto3.*` test fails the build
-  (T-conf-1). Failing `Recommended.Proto3.*` tests are reported but
-  non-blocking (T-conf-2/3).
-
-> **Conformance status.** The conformance runner is not installed in the default
-> dev environment, so the live suite has not been run locally — only the
-> skip-aware harness and the CI wiring are in place here. The required-proto3 bar
-> is enforced in CI.
-
 ## Development
 
 Common tasks run through [`just`](https://github.com/casey/just):
 
 ```sh
-just check   # lint + test (the gate every step ends on)
-just test    # prove -lr t
-just lint    # perlcritic --gentle lib t
+just check       # lint + test — the everyday gate
+just test        # prove -lr t
+just lint        # perlcritic --gentle lib t
+just check-dist  # check + the full Dist::Zilla build (needs the dzil toolchain)
 ```
 
 Author-only POD tests live under `xt/` and require `Test::Pod` and
@@ -182,8 +267,9 @@ Author-only POD tests live under `xt/` and require `Test::Pod` and
 prove -lr xt
 ```
 
-The authoritative design lives in [`spec.md`](spec.md); the TDD roadmap is in
-[`plan.md`](plan.md) and [`todo.md`](todo.md).
+The authoritative design lives in [`spec.md`](spec.md); the original TDD roadmap
+is in [`plan.md`](plan.md) / [`todo.md`](todo.md), and the full-conformance plan
+is in [`V34-PLAN.md`](V34-PLAN.md).
 
 ## License
 
