@@ -37,6 +37,10 @@ jobs:
         run: |
           cpanm --notest --installdeps .
           cpanm --notest Perl::Critic Dist::Zilla
+          # The [@Starter::Git] bundle pulls a set of author-side plugins that
+          # `dzil test` needs; install them so the dzil leg of `just check`
+          # runs instead of erroring on missing plugins.
+          dzil authordeps --missing | cpanm --notest
 
       - name: Run checks
         run: just check
