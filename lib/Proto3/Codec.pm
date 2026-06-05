@@ -505,10 +505,11 @@ class Proto3::Codec {
     # 2 precedes 10; string (and bool, treated as text) keys sort as strings.
     method _sorted_map_keys ($key_type, $keys) {
         my $spec = $key_type ? $SCALAR_TYPE{$key_type} : undef;
-        if ( $spec && $spec->{is_num} && $key_type ne 'bool' ) {
-            return sort { $a <=> $b } @$keys;
-        }
-        return sort @$keys;
+        my @sorted =
+            ( $spec && $spec->{is_num} && $key_type ne 'bool' )
+            ? sort { $a <=> $b } @$keys
+            : sort @$keys;
+        return @sorted;
     }
 
     # The fully-qualified message name for a message-typed field. Prefers the

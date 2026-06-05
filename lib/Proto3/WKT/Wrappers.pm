@@ -31,7 +31,8 @@ class Proto3::WKT::Wrappers {
     # full_names() -> the list of all nine wrapper fully-qualified names, so the
     # facade can register a schema and JSON handler for each from one place.
     sub full_names ($class) {
-        return sort keys %WRAPPER_TYPE;
+        my @names = sort keys %WRAPPER_TYPE;
+        return @names;
     }
 
     # schema_message($full_name) -> the canonical Schema::Message for one wrapper:

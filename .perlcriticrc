@@ -1,0 +1,18 @@
+# ABOUTME: Perl::Critic configuration for the Proto3 distribution.
+# Runs the gentle (severity 5) policy set, with one deliberate exclusion.
+
+severity = gentle
+
+# ControlStructures::ProhibitReturnSort stays ON — `return sort ...` is a real
+# scalar-context hazard and is fixed in code, not excluded here.
+
+# Subroutines::ProhibitExplicitReturnUndef is excluded deliberately. Many of
+# this distribution's lookup and accessor methods (message($name),
+# enum($name), json_handler($name), find_runner(), a WKT/value handler that
+# may have no special form, numeric parsers that signal "not a value") are
+# documented to return undef in scalar context to mean "absent". A bare
+# `return;` yields an empty LIST, which a scalar-context caller would see as
+# undef but a list-context caller (e.g. `my @x = $obj->lookup(...)`) would see
+# as an empty list — a subtle bug. Returning an explicit scalar undef is the
+# correct, intentional contract for these single-value APIs.
+[-Subroutines::ProhibitExplicitReturnUndef]
