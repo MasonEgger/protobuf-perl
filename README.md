@@ -36,9 +36,9 @@ This isn't on CPAN yet, so install straight from the repository.
 Git remote:
 
 ```sh
-cpanm git://github.com/MasonEgger/proto3-perl.git
+cpanm git://github.com/MasonEgger/protobuf-perl.git
 # or a specific branch/tag:
-cpanm git://github.com/MasonEgger/proto3-perl.git@v1
+cpanm git://github.com/MasonEgger/protobuf-perl.git@v1
 ```
 
 This builds the distribution and installs `Protobuf`, the `Protobuf::*` modules, and
@@ -48,8 +48,8 @@ prerequisites are core, there is nothing else to fetch.
 ### Option B — clone and install
 
 ```sh
-git clone https://github.com/MasonEgger/proto3-perl.git
-cd proto3-perl
+git clone https://github.com/MasonEgger/protobuf-perl.git
+cd protobuf-perl
 cpanm --installdeps .   # a no-op on a complete core Perl, but safe to run
 cpanm .                 # build + install the distribution
 ```
@@ -60,13 +60,13 @@ To use it from a checkout without installing anything, just add `lib/` to the
 include path:
 
 ```sh
-git clone https://github.com/MasonEgger/proto3-perl.git
-cd proto3-perl
+git clone https://github.com/MasonEgger/protobuf-perl.git
+cd protobuf-perl
 perl -Ilib -MProtobuf -e 'print "Protobuf $Protobuf::VERSION\n"'
 ```
 
-In your own code: `use lib '/path/to/proto3-perl/lib';` or run with
-`perl -I/path/to/proto3-perl/lib …` / set `PERL5LIB`.
+In your own code: `use lib '/path/to/protobuf-perl/lib';` or run with
+`perl -I/path/to/protobuf-perl/lib …` / set `PERL5LIB`.
 
 ### Pin it in a `cpanfile`
 
@@ -74,7 +74,7 @@ A downstream project can depend on the Git checkout from its own `cpanfile`:
 
 ```perl
 requires 'Protobuf',
-    git => 'https://github.com/MasonEgger/proto3-perl.git',
+    git => 'https://github.com/MasonEgger/protobuf-perl.git',
     ref => 'v1';
 ```
 

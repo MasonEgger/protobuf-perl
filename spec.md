@@ -2,7 +2,7 @@
 
 **Status:** Draft v0.1 — pre-implementation design
 **Date:** 2026-05-29
-**Repository:** `MasonEgger/proto3-perl` (CPAN distribution: `Proto3`)
+**Repository:** `MasonEgger/protobuf-perl` (CPAN distribution: `Proto3`)
 
 This document specifies the design of a pure-Perl implementation of Google
 Protocol Buffers, proto3 dialect. It is the substrate that
@@ -299,7 +299,7 @@ the brand name `Proto3` is kept (cf. `Test2`, `JSON::PP`).
 ## 2. Repository layout
 
 ```
-proto3-perl/
+protobuf-perl/
 ├── dist.ini                      # Dist::Zilla config (@Starter::Git)
 ├── lib/
 │   └── Proto3.pm                 # Top-level loader + version
