@@ -196,6 +196,14 @@ class Protobuf::Schema {
                 current_message => $current_message,
             );
             $field->set_type_ref($ref);
+
+            # The native parser tags every named-type field 'message' (it can't
+            # tell enum from message syntactically). Correct the type from the
+            # resolved ref's class so an enum field takes the codec's varint path
+            # rather than the embedded-message path. Idempotent for the
+            # DescriptorSet path, which already supplies the right type.
+            $field->set_type(
+                $ref->isa('Protobuf::Schema::Enum') ? 'enum' : 'message' );
         }
 
         $self->_resolve_message( $_, $package, $resolver )

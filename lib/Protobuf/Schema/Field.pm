@@ -62,6 +62,13 @@ class Protobuf::Schema::Field {
     # type-name resolution runs. Every other field stays immutable.
     method set_type_ref ($ref) { $type_ref = $ref; return $self; }
 
+    # Companion to set_type_ref: the native parser cannot tell enum from message
+    # syntactically and tags both 'message', so the resolver rewrites the type to
+    # 'enum' once it sees the resolved target is a Schema::Enum. Idempotent — the
+    # DescriptorSet path already supplies the correct type, so this is a no-op
+    # there. Like set_type_ref, the only post-construction mutation kept narrow.
+    method set_type ($new_type) { $type = $new_type; return $self; }
+
     # The resolver replaces the explicit-override hashref with the field's
     # effective Protobuf::Schema::Features. Idempotent like set_type_ref: storing
     # the same resolved set twice preserves identity.
@@ -232,8 +239,15 @@ A hashref of the field's options.
 
 =item C<set_type_ref($ref)>
 
-The one post-construction mutation a field allows: the resolver calls this to
-link the resolved type. Returns C<$self>.
+A post-construction mutation the resolver uses: it links the resolved type.
+Returns C<$self>.
+
+=item C<set_type($new_type)>
+
+Companion to C<set_type_ref>: the native parser cannot distinguish enum from
+message syntactically and tags both C<'message'>, so the resolver rewrites the
+type to C<'enum'> once it sees the resolved target is a L<Protobuf::Schema::Enum>.
+Idempotent. Returns C<$self>.
 
 =back
 
