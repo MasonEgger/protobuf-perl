@@ -80,6 +80,19 @@ __END__
 
 Protobuf::WKT::Util - RFC3339 and fractional-seconds helpers for well-known types
 
+=head1 SYNOPSIS
+
+    use Protobuf::WKT::Util;
+
+    Protobuf::WKT::Util::fraction_suffix(500_000_000);   # '.500'
+    Protobuf::WKT::Util::fraction_suffix(5_000_000);     # '.005'
+    Protobuf::WKT::Util::parse_fraction('5');            # 500000000
+    Protobuf::WKT::Util::rfc3339_prefix(0);              # '1970-01-01T00:00:00'
+    Protobuf::WKT::Util::parse_rfc3339_prefix('1970-01-01T00:00:00');  # 0
+
+Internal helper shared by L<Protobuf::WKT::Timestamp> and
+L<Protobuf::WKT::Duration>; not part of the public API.
+
 =head1 DESCRIPTION
 
 Internal helpers shared by L<Protobuf::WKT::Timestamp> and L<Protobuf::WKT::Duration>

@@ -46,6 +46,24 @@ __END__
 
 Protobuf::Schema::File - One .proto file's top-level schema definitions
 
+=head1 SYNOPSIS
+
+    use Protobuf::Schema::File;
+
+    my $file = Protobuf::Schema::File->new(
+        name     => 'hello.proto',
+        package  => 'hello',
+        syntax   => 'proto3',
+        messages => [ $message ],   # Protobuf::Schema::Message objects
+    );
+
+    $file->package;   # 'hello'
+    $file->edition;   # 'proto3' (defaulted from syntax when not given)
+    $file->messages;  # arrayref of top-level Protobuf::Schema::Message
+
+File objects are usually produced by L<Protobuf::Parser> (one per parsed
+C<.proto>) or L<Protobuf::DescriptorSet>, then added to a L<Protobuf::Schema>.
+
 =head1 DESCRIPTION
 
 The C<FileDescriptorProto> equivalent: file name, package, top-level messages,

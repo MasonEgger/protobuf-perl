@@ -60,6 +60,26 @@ __END__
 
 Protobuf::Schema::Enum - An enum type within a schema
 
+=head1 SYNOPSIS
+
+    use Protobuf::Schema::Enum;
+
+    my $enum = Protobuf::Schema::Enum->new(
+        name      => 'Status',
+        full_name => 'pkg.Status',
+        values    => [
+            { name => 'UNKNOWN', number => 0 },
+            { name => 'ACTIVE',  number => 1 },
+        ],
+    );
+
+    $enum->name;      # 'Status'
+    $enum->values;    # arrayref of { name, number } hashrefs
+    $enum->closed;    # 0 (open) until the resolver sets it from features
+
+Enum objects are usually produced by L<Protobuf::Parser> or
+L<Protobuf::DescriptorSet> rather than constructed by hand.
+
 =head1 DESCRIPTION
 
 Models a proto3 enum: its short and fully-qualified names plus its values
