@@ -8,8 +8,8 @@ use warnings;
 use FindBin ();
 use lib "$FindBin::Bin/../../lib";
 
-use Proto3::Parser;
-use Proto3::Codec;
+use Protobuf::Parser;
+use Protobuf::Codec;
 
 my $root = $ENV{SDK_CORE_PROTO_PATH};
 unless ( defined $root && length $root && -d $root ) {
@@ -32,8 +32,8 @@ my %TARGET = (
 
 # Collect the whole reachable graph into one schema (a shared parser lets the
 # import cache deduplicate the diamond between the two entry points).
-my $parser = Proto3::Parser->new( include_paths => [$root] );
-my $schema = Proto3::Schema->new;
+my $parser = Protobuf::Parser->new( include_paths => [$root] );
+my $schema = Protobuf::Schema->new;
 for my $full_name ( sort keys %TARGET ) {
     my $sub = $parser->parse_with_imports( $TARGET{$full_name} );
     $schema->add_file($_)
@@ -44,7 +44,7 @@ $schema->resolve;
 say 'Resolved sdk-core graph: ', scalar( $schema->all_messages->@* ),
     ' messages.';
 
-my $codec = Proto3::Codec->new( schema => $schema );
+my $codec = Protobuf::Codec->new( schema => $schema );
 for my $full_name ( sort keys %TARGET ) {
     my $bytes = $codec->encode( $full_name, {} );
     my $back  = $codec->decode( $full_name, $bytes );
