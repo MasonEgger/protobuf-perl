@@ -1,3 +1,5 @@
+commit-msg.md
+
 !Build/
 .last_cover_stats
 /META.yml
@@ -15,6 +17,7 @@ nytprof.out
 
 # Dist::Zilla
 /.build/
+/Protobuf-*/
 
 # Module::Build
 _build/
@@ -39,3 +42,4 @@ inc/
 /.carmel/
 # cpanfile.snapshot should generally be ignored for library code, otherwise included
 # cpanfile.snapshot
+failing_tests.txt

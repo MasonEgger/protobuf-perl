@@ -1,0 +1,27 @@
+// Protocol Buffers - Google's data interchange format
+// Copyright 2008 Google Inc.  All rights reserved.
+//
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file or at
+// https://developers.google.com/open-source/licenses/bsd
+
+syntax = "proto3";
+
+package google.protobuf;
+
+option java_package = "com.google.protobuf";
+option java_outer_classname = "FieldMaskProto";
+option java_multiple_files = true;
+option objc_class_prefix = "GPB";
+option csharp_namespace = "Google.Protobuf.WellKnownTypes";
+option cc_enable_arenas = true;
+option go_package = "google.golang.org/protobuf/types/known/fieldmaskpb";
+
+// `FieldMask` represents a set of symbolic field paths, for example:
+//
+//     paths: "f.a"
+//     paths: "f.b.d"
+message FieldMask {
+  // The set of field mask paths.
+  repeated string paths = 1;
+}

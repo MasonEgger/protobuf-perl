@@ -1,0 +1,129 @@
+# ABOUTME: GitHub Actions CI for Proto3 — unit matrix plus the full protobuf
+# conformance gate (proto2 + proto3 + editions) against the v34 suite.
+name: CI
+
+# Pre-flight gate for every change: any push to any branch, and every pull
+# request (including from forks / external contributors). The conformance job
+# only reads + uploads an artifact, so a fork PR's read-only token is fine.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: perl ${{ matrix.perl }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        perl: ['5.38', '5.40']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Perl ${{ matrix.perl }}
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: ${{ matrix.perl }}
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install dependencies
+        run: |
+          cpanm --notest --installdeps .
+          cpanm --notest Perl::Critic
+
+      # Blocking gate: lint + the full unit suite. The conformance suite runs in
+      # its own job below.
+      - name: Run checks
+        run: just check
+
+      # Blocking gate: the full Dist::Zilla build + author tests (pod-syntax,
+      # compile). Validates the distribution assembles, installs, and that the
+      # generated metadata/POD are clean.
+      - name: Dist build
+        run: |
+          cpanm --notest Dist::Zilla
+          dzil authordeps --missing | cpanm --notest
+          just check-dist
+
+  conformance:
+    name: conformance suite (v34, proto2 + proto3 + editions)
+    runs-on: ubuntu-latest
+    env:
+      # The protobuf release whose conformance_test_runner drives the testee.
+      # The prebuilt runner ships in the protobuf-conformance npm package, so no
+      # source build is needed. Bump in one place to re-gate against a newer
+      # suite (the vendored share/proto/conformance-v34.fds must match — see
+      # share/proto/REGEN-conformance-fds.md).
+      CONFORMANCE_VERSION: '34.1.0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Perl 5.38
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: '5.38'
+
+      - name: Set up Node (for the prebuilt conformance runner)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Perl deps
+        run: cpanm --notest --installdeps .
+
+      # The official protobuf-conformance npm package ships a prebuilt
+      # conformance_test_runner binary (no Abseil/source build). Install it and
+      # point the harness at the linux-x64 binary.
+      - name: Install the prebuilt conformance runner
+        run: |
+          npm install --no-save "protobuf-conformance@${CONFORMANCE_VERSION}"
+          RUNNER="$PWD/node_modules/protobuf-conformance/bin/conformance_test_runner-linux-x64"
+          chmod +x "$RUNNER"
+          echo "CONFORMANCE_TEST_RUNNER=$RUNNER" >> "$GITHUB_ENV"
+
+      # Required gate: t/conformance/run_suite.t fails the build on ANY required
+      # failure (proto2/proto3/editions) and, with --enforce_recommended, on any
+      # recommended failure too. Capture the full runner output for the artifact.
+      - name: Run conformance suite
+        id: conformance
+        run: |
+          set -o pipefail
+          mkdir -p conformance-results
+          prove -lrv t/conformance/run_suite.t 2>&1 \
+            | tee conformance-results/run_suite.log
+
+      - name: Summarize conformance result
+        if: always()
+        run: |
+          LOG=conformance-results/run_suite.log
+          SUMMARY=conformance-results/conformance-summary.txt
+          {
+            echo "# protobuf conformance (v${CONFORMANCE_VERSION})"
+            echo
+            grep -E 'CONFORMANCE SUITE (PASSED|FAILED)' "$LOG" 2>/dev/null | head -1 \
+              || echo "no summary line (build or run error)"
+            echo
+            echo "required failures:    $(grep -cE 'ERROR.*Required\.'    "$LOG" 2>/dev/null || echo 0)"
+            echo "recommended failures: $(grep -cE 'ERROR.*Recommended\.' "$LOG" 2>/dev/null || echo 0)"
+          } | tee "$SUMMARY"
+          {
+            echo '```'
+            cat "$SUMMARY"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload conformance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-v${{ env.CONFORMANCE_VERSION }}-${{ github.run_id }}
+          path: conformance-results/
+          if-no-files-found: warn
+          retention-days: 30
