@@ -25,6 +25,22 @@ __END__
 
 Protobuf::Schema::Oneof - A oneof group within a message schema
 
+=head1 SYNOPSIS
+
+    use Protobuf::Schema::Oneof;
+
+    my $oneof = Protobuf::Schema::Oneof->new(
+        name        => 'result',
+        oneof_index => 0,
+        fields      => [ $field_a, $field_b ],   # member Schema::Field objects
+    );
+
+    $oneof->name;     # 'result'
+    $oneof->fields;   # arrayref of the member Protobuf::Schema::Field objects
+
+The member fields also appear in the owning message's field list, each carrying
+the matching C<oneof_index>.
+
 =head1 DESCRIPTION
 
 Models a oneof: a named set of mutually-exclusive member fields. The members

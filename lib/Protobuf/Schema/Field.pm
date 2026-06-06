@@ -165,6 +165,27 @@ __END__
 
 Protobuf::Schema::Field - A single field within a message schema
 
+=head1 SYNOPSIS
+
+    use Protobuf::Schema::Field;
+
+    my $field = Protobuf::Schema::Field->new(
+        name   => 'recipients',
+        number => 3,
+        type   => 'string',
+        label  => 'repeated',
+    );
+
+    $field->name;          # 'recipients'
+    $field->number;        # 3
+    $field->is_repeated;   # 1
+    $field->is_message;    # '' (false)
+    $field->has_presence;  # presence predicate the codec uses to decide omit
+
+Field objects are usually produced by L<Protobuf::Parser> or
+L<Protobuf::DescriptorSet>; the resolver then links each message/enum-typed
+field to its target via C<set_type_ref>.
+
 =head1 DESCRIPTION
 
 Models one C<FieldDescriptorProto>: its name, number, proto3 type, label, and

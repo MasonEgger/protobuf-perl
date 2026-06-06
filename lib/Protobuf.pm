@@ -17,6 +17,35 @@ __END__
 
 Protobuf - A pure-Perl Protocol Buffers implementation
 
+=head1 SYNOPSIS
+
+    use Protobuf::Parser;
+    use Protobuf::Codec;
+
+    # Parse a .proto into a schema and resolve cross-type references.
+    my $file = Protobuf::Parser->new->parse_string('demo.proto', <<~'PROTO');
+        syntax = "proto3";
+        package demo;
+        message Point { int32 x = 1; int32 y = 2; }
+        PROTO
+
+    my $schema = Protobuf::Schema->new;
+    $schema->add_file($file)->resolve;
+
+    # A codec is the wire + JSON workhorse, bound to the resolved schema.
+    # Message values are plain hashrefs keyed by proto field name.
+    my $codec = Protobuf::Codec->new( schema => $schema );
+
+    my $bytes = $codec->encode( 'demo.Point', { x => 3, y => 4 } );
+    my $back  = $codec->decode( 'demo.Point', $bytes );        # { x => 3, y => 4 }
+
+    my $json  = $codec->encode_json( 'demo.Point', { x => 3, y => 4 } );  # {"x":3,"y":4}
+    my $obj   = $codec->decode_json( 'demo.Point', $json );
+
+For the full guide — getting a schema three ways, the value data model, JSON,
+well-known types, generated classes, and the proto2/proto3/editions feature
+model — see L<Protobuf::Manual>.
+
 =head1 DESCRIPTION
 
 Protobuf is a pure-Perl implementation of Protocol Buffers: wire codec, schema
