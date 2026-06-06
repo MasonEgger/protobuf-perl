@@ -428,6 +428,8 @@ sub Protobuf::DescriptorSet::_build_enum {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::DescriptorSet - load a protoc FileDescriptorSet into a Protobuf::Schema

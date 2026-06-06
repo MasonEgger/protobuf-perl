@@ -64,6 +64,8 @@ class Protobuf::Schema::Message {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Message - A message type within a schema

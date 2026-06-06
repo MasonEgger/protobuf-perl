@@ -11,6 +11,8 @@ our $VERSION = '0.1.0';
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf - A pure-Perl Protocol Buffers implementation

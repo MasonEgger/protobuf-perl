@@ -76,6 +76,8 @@ class Protobuf::WKT {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT - well-known-types facade

@@ -152,6 +152,8 @@ sub _string ($value) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Serializer - Render a Schema::File as static Perl

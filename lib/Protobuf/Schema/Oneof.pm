@@ -19,6 +19,8 @@ class Protobuf::Schema::Oneof {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Oneof - A oneof group within a message schema

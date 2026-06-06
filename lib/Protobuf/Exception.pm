@@ -85,6 +85,8 @@ class Protobuf::Exception::JSON::WKT   :isa(Protobuf::Exception::JSON) {}
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Exception - Typed exception hierarchy for Protobuf

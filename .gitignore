@@ -17,6 +17,7 @@ nytprof.out
 
 # Dist::Zilla
 /.build/
+/Protobuf-*/
 
 # Module::Build
 _build/

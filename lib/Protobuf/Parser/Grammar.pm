@@ -696,6 +696,8 @@ sub _camel_case_upper {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Parser::Grammar - recursive-descent parser for .proto source

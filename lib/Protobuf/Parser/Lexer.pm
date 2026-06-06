@@ -352,6 +352,8 @@ sub _read_word {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Parser::Lexer - hand-written tokenizer for .proto source

@@ -135,6 +135,8 @@ class Protobuf::WKT::Timestamp {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::Timestamp - the google.protobuf.Timestamp well-known type

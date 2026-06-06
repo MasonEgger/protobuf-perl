@@ -21,6 +21,8 @@ class Protobuf::Schema::Service {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Service - A service definition within a schema

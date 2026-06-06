@@ -105,6 +105,8 @@ class Protobuf::WKT::FieldMask {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::FieldMask - the google.protobuf.FieldMask well-known type

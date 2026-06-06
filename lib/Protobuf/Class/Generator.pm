@@ -401,6 +401,8 @@ sub _assert_scalar_type ($field, $value) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Class::Generator - Build a Perl class at runtime from a Schema::Message

@@ -74,6 +74,8 @@ sub parse_rfc3339_prefix ($prefix) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::Util - RFC3339 and fractional-seconds helpers for well-known types

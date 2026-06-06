@@ -120,6 +120,8 @@ class Protobuf::WKT::Any {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::Any - the google.protobuf.Any well-known type

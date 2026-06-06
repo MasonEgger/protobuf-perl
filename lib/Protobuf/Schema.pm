@@ -208,6 +208,8 @@ class Protobuf::Schema {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema - top-level proto3 schema facade and fully-qualified-name index

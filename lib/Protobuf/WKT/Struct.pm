@@ -243,6 +243,8 @@ class Protobuf::WKT::Struct {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::Struct - the google.protobuf Struct/Value/ListValue/NullValue family

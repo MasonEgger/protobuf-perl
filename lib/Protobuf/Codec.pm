@@ -1030,6 +1030,8 @@ class Protobuf::Codec {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Codec - high-level proto3 encode/decode over a resolved schema

@@ -106,6 +106,8 @@ sub Protobuf::Schema::Features::merge ($class, $base, $override = {}) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Features - The editions FeatureSet model and resolution
@@ -150,15 +152,15 @@ effective features.
 
 =over 4
 
-=item proto2
+=item C<proto2>
 
 EXPLICIT, CLOSED, EXPANDED, LENGTH_PREFIXED, NONE, ALLOW.
 
-=item proto3
+=item C<proto3>
 
 IMPLICIT, OPEN, PACKED, LENGTH_PREFIXED, VERIFY, ALLOW.
 
-=item 2023
+=item C<2023>
 
 EXPLICIT, OPEN, PACKED, LENGTH_PREFIXED, VERIFY, ALLOW.
 

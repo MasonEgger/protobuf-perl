@@ -95,6 +95,8 @@ class Protobuf::Resolver {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Resolver - proto3 type-name scoping resolution

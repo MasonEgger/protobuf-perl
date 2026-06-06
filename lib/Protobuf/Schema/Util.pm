@@ -30,6 +30,8 @@ sub assert_unique ( $keys, $exception_class, $message_template ) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Util - Construction-time validation helpers for the schema model

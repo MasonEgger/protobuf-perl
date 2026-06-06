@@ -159,6 +159,8 @@ class Protobuf::Schema::Field {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Field - A single field within a message schema

@@ -10,6 +10,8 @@ Protobuf::Conformance::run_stdio( \*STDIN, \*STDOUT );
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 protobuf-conformance - the proto3 conformance testee

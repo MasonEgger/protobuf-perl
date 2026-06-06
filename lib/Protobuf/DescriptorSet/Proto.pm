@@ -292,6 +292,8 @@ class Protobuf::DescriptorSet::Proto {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::DescriptorSet::Proto - bootstrap schema for the google.protobuf

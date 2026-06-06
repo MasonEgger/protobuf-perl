@@ -68,6 +68,8 @@ sub decode_tag ($bytes) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Wire::Tag - field tag packing for the proto3 wire format

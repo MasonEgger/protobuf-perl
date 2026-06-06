@@ -39,15 +39,14 @@ jobs:
           cpanm --notest Perl::Critic
 
       # Blocking gate: lint + the full unit suite. The conformance suite runs in
-      # its own job below; the distribution build is validated non-blocking.
+      # its own job below.
       - name: Run checks
         run: just check
 
-      # Validate the distribution assembles and installs via Dist::Zilla. Kept
-      # non-blocking (continue-on-error) so a packaging-only hiccup does not fail
-      # the pre-flight gate; the conformance + unit gates above are the bar.
-      - name: Dist build (non-blocking)
-        continue-on-error: true
+      # Blocking gate: the full Dist::Zilla build + author tests (pod-syntax,
+      # compile). Validates the distribution assembles, installs, and that the
+      # generated metadata/POD are clean.
+      - name: Dist build
         run: |
           cpanm --notest Dist::Zilla
           dzil authordeps --missing | cpanm --notest

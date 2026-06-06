@@ -193,6 +193,8 @@ sub decode_zigzag64 ($bytes) { _decode_zigzag( $bytes, 64 ) }
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Wire::Varint - base-128 varint and zigzag encoding for the proto3 wire format

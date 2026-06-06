@@ -151,6 +151,8 @@ class Protobuf::Parser {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Parser - parse .proto files into schema definitions

@@ -54,6 +54,8 @@ class Protobuf::Schema::Enum {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::Enum - An enum type within a schema

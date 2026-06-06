@@ -197,6 +197,8 @@ sub skip_group ($bytes, $field_number) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Wire - proto3 wire-format primitives (public facade)
@@ -250,7 +252,8 @@ layer (L<Protobuf::Wire::Tag/decode_tag>).
 
 =head2 encode_fixed64 / decode_fixed64
 
-8-byte little-endian unsigned 64-bit integer (C<pack 'Q<'>). On 32-bit Perls,
+8-byte little-endian unsigned 64-bit integer (packed little-endian via the
+C<Q> template). On 32-bit Perls,
 where C<Q> is unavailable, the value is split into two 32-bit halves and
 C<decode_fixed64> returns a L<Math::BigInt>.
 

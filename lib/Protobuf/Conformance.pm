@@ -347,6 +347,8 @@ sub Protobuf::Conformance::_write_frame {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Conformance - the proto3 conformance testee request handler

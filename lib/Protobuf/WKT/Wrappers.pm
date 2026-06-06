@@ -101,6 +101,8 @@ class Protobuf::WKT::Wrappers {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::Wrappers - the google.protobuf primitive wrapper well-known types

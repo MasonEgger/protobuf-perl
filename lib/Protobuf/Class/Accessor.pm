@@ -39,6 +39,8 @@ sub accessor_name ($field_name) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Class::Accessor - Accessor-name computation for generated classes

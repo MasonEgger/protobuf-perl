@@ -78,6 +78,8 @@ exit run(@ARGV) unless caller;
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 protobuf-gen-perl - ahead-of-time proto3 code generator

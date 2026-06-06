@@ -36,6 +36,8 @@ class Protobuf::WKT::Empty {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::Empty - the google.protobuf.Empty well-known type

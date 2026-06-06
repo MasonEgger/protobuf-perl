@@ -40,6 +40,8 @@ class Protobuf::Schema::File {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Schema::File - One .proto file's top-level schema definitions

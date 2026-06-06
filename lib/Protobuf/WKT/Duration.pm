@@ -135,6 +135,8 @@ class Protobuf::WKT::Duration {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::WKT::Duration - the google.protobuf.Duration well-known type

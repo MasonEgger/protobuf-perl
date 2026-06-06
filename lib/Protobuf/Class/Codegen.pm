@@ -158,6 +158,8 @@ sub _perl_string ($value) {
 
 __END__
 
+=encoding utf-8
+
 =head1 NAME
 
 Protobuf::Class::Codegen - AOT renderer for proto3 message classes
@@ -175,7 +177,7 @@ Protobuf::Class::Codegen - AOT renderer for proto3 message classes
 
 =head1 DESCRIPTION
 
-The rendering engine behind L<bin/protobuf-gen-perl|/bin/protobuf-gen-perl>. It maps
+The rendering engine behind C<bin/protobuf-gen-perl>. It maps
 protobuf packages to Perl namespaces and emits one C<.pm> per C<.proto> file.
 
 Each emitted module reconstructs its file's L<Protobuf::Schema> tree from static
