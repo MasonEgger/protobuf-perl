@@ -5,19 +5,19 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Codec;
-use Proto3::JSON;
-use Proto3::WKT;
-use Proto3::WKT::Any;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Codec;
+use Protobuf::JSON;
+use Protobuf::WKT;
+use Protobuf::WKT::Any;
 
 my sub wkt_jc {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
     $schema->resolve;
-    my $codec = Proto3::Codec->new( schema => $schema );
-    my $jc = Proto3::JSON->new( codec => $codec, schema => $schema );
+    my $codec = Protobuf::Codec->new( schema => $schema );
+    my $jc = Protobuf::JSON->new( codec => $codec, schema => $schema );
     return ( $codec, $jc );
 }
 
@@ -25,7 +25,7 @@ my sub wkt_jc {
 # decodes to an Any with no type_url and no value bytes.
 {
     my ( $codec, $jc ) = wkt_jc();
-    my $any = Proto3::WKT::Any->from_json_value( {}, $codec, $jc );
+    my $any = Protobuf::WKT::Any->from_json_value( {}, $codec, $jc );
     is( $any->{type_url}, '', 'empty Any has empty type_url' );
     is( $any->{value},    '', 'empty Any has empty value bytes' );
 }
@@ -33,7 +33,7 @@ my sub wkt_jc {
 # An empty Any serializes back to {} (round-trip partner of the above).
 {
     my ( $codec, $jc ) = wkt_jc();
-    my $json = Proto3::WKT::Any->to_json_value(
+    my $json = Protobuf::WKT::Any->to_json_value(
         { type_url => '', value => '' }, $codec, $jc );
     is_deeply( $json, {}, 'empty Any serializes to {}' );
 }
@@ -42,11 +42,11 @@ my sub wkt_jc {
 {
     my ( $codec, $jc ) = wkt_jc();
     my $ok = eval {
-        Proto3::WKT::Any->from_json_value( { foo => 1 }, $codec, $jc );
+        Protobuf::WKT::Any->from_json_value( { foo => 1 }, $codec, $jc );
         1;
     };
     ok( !$ok, 'non-empty Any object without @type is rejected' );
-    isa_ok( $@, 'Proto3::Exception::JSON::WKT', 'throws JSON::WKT' );
+    isa_ok( $@, 'Protobuf::Exception::JSON::WKT', 'throws JSON::WKT' );
 }
 
 # An Any wrapping google.protobuf.Empty inlines: its JSON has "@type" and NO
@@ -58,7 +58,7 @@ my sub wkt_jc {
         type_url => 'type.googleapis.com/google.protobuf.Empty',
         value    => '',
     };
-    my $json = Proto3::WKT::Any->to_json_value( $any, $codec, $jc );
+    my $json = Protobuf::WKT::Any->to_json_value( $any, $codec, $jc );
     is( $json->{'@type'}, 'type.googleapis.com/google.protobuf.Empty',
         'Any-of-Empty carries @type' );
     ok( !exists $json->{value},

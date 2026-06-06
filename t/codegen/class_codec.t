@@ -1,31 +1,31 @@
 # ABOUTME: Integration tests for generated-class encode/decode — instances
-# self-serialize via Proto3::Codec, nested fields decode into nested classes (§4.6).
+# self-serialize via Protobuf::Codec, nested fields decode into nested classes (§4.6).
 use v5.38;
 use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
-use Proto3::Class::Generator;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
+use Protobuf::Class::Generator;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a one-file schema over the given Schema::Message list and return
 # ($schema, $codec).
 my sub schema_and_codec (@messages) {
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [@messages],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return ( $schema, Proto3::Codec->new( schema => $schema ) );
+    return ( $schema, Protobuf::Codec->new( schema => $schema ) );
 }
 
 # Unique target package per build so each install is fresh.
@@ -35,17 +35,17 @@ my sub next_pkg { return 'T::Codegen::M' . ( ++$pkg_counter ) }
 # --- 25.1: instance encode == codec encode of to_hashref ----------------
 
 {
-    my $msg = Proto3::Schema::Message->new(
+    my $msg = Protobuf::Schema::Message->new(
         name      => 'Flat',
         full_name => 'pkg.Flat',
         fields    => [
-            Proto3::Schema::Field->new( name => 'encoding', number => 1, type => 'string' ),
-            Proto3::Schema::Field->new( name => 'count',    number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'encoding', number => 1, type => 'string' ),
+            Protobuf::Schema::Field->new( name => 'count',    number => 2, type => 'int32' ),
         ],
     );
     my ( $schema, $codec ) = schema_and_codec($msg);
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $msg,
         target_package => $target,
@@ -62,17 +62,17 @@ my sub next_pkg { return 'T::Codegen::M' . ( ++$pkg_counter ) }
 # --- 25.2: Class->decode equals codec hashref decode --------------------
 
 {
-    my $msg = Proto3::Schema::Message->new(
+    my $msg = Protobuf::Schema::Message->new(
         name      => 'Flat',
         full_name => 'pkg.Flat',
         fields    => [
-            Proto3::Schema::Field->new( name => 'encoding', number => 1, type => 'string' ),
-            Proto3::Schema::Field->new( name => 'count',    number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'encoding', number => 1, type => 'string' ),
+            Protobuf::Schema::Field->new( name => 'count',    number => 2, type => 'int32' ),
         ],
     );
     my ( $schema, $codec ) = schema_and_codec($msg);
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $msg,
         target_package => $target,
@@ -91,17 +91,17 @@ my sub next_pkg { return 'T::Codegen::M' . ( ++$pkg_counter ) }
 # --- 25.3 / T-class-7: new -> encode -> decode -> to_hashref round-trip --
 
 {
-    my $msg = Proto3::Schema::Message->new(
+    my $msg = Protobuf::Schema::Message->new(
         name      => 'Flat',
         full_name => 'pkg.Flat',
         fields    => [
-            Proto3::Schema::Field->new( name => 'encoding', number => 1, type => 'string' ),
-            Proto3::Schema::Field->new( name => 'count',    number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'encoding', number => 1, type => 'string' ),
+            Protobuf::Schema::Field->new( name => 'count',    number => 2, type => 'int32' ),
         ],
     );
     my ( $schema, $codec ) = schema_and_codec($msg);
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $msg,
         target_package => $target,
@@ -121,40 +121,40 @@ my sub next_pkg { return 'T::Codegen::M' . ( ++$pkg_counter ) }
 
 {
     # pkg.Inner { int32 a = 1; string b = 2 }
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name      => 'Inner',
         full_name => 'pkg.Inner',
         fields    => [
-            Proto3::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
-            Proto3::Schema::Field->new( name => 'b', number => 2, type => 'string' ),
+            Protobuf::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'b', number => 2, type => 'string' ),
         ],
     );
     # pkg.Outer { Inner inner = 1; repeated Inner items = 2; int32 tail = 3 }
-    my $outer = Proto3::Schema::Message->new(
+    my $outer = Protobuf::Schema::Message->new(
         name      => 'Outer',
         full_name => 'pkg.Outer',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'inner', number => 1, type => 'message',
                 type_name => 'pkg.Inner',
             ),
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'items', number => 2, type => 'message',
                 label => 'repeated', type_name => 'pkg.Inner',
             ),
-            Proto3::Schema::Field->new( name => 'tail', number => 3, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'tail', number => 3, type => 'int32' ),
         ],
     );
     my ( $schema, $codec ) = schema_and_codec( $outer, $inner );
 
     my $inner_pkg = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $inner,
         target_package => $inner_pkg,
     );
     my $outer_pkg = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $outer,
         target_package => $outer_pkg,

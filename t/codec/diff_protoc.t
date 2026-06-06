@@ -7,20 +7,20 @@ use Test::More;
 use lib 'lib';
 use lib 't/lib';
 
-use Proto3Test::Protoc qw(have_protoc protoc_decode protoc_encode);
+use ProtobufTest::Protoc qw(have_protoc protoc_decode protoc_encode);
 
 plan skip_all => 'protoc not on PATH' unless have_protoc();
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Oneof;
-use Proto3::Codec;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Oneof;
+use Protobuf::Codec;
 
 # ----------------------------------------------------------------------
 # Fixtures: ONE .proto source, fed to protoc, mirrored by a hand-built
-# Proto3::Schema so our codec and protoc operate over the same message set.
+# Protobuf::Schema so our codec and protoc operate over the same message set.
 # ----------------------------------------------------------------------
 
 my $PROTO_SOURCE = <<'PROTO';
@@ -96,21 +96,21 @@ PROTO
 # --- Schema construction mirroring the .proto above ---------------------
 
 sub f ($name, $number, $type, %opts) {
-    return Proto3::Schema::Field->new(
+    return Protobuf::Schema::Field->new(
         name => $name, number => $number, type => $type, %opts,
     );
 }
 
 sub msg ($full_name, $fields, %opts) {
     my $short = ( split /\./, $full_name )[-1];
-    return Proto3::Schema::Message->new(
+    return Protobuf::Schema::Message->new(
         name => $short, full_name => $full_name, fields => $fields, %opts,
     );
 }
 
 # Synthetic MapEntry message for a map<key,value> field.
 sub map_entry ($full_name, $key_type, $value_type) {
-    return Proto3::Schema::Message->new(
+    return Protobuf::Schema::Message->new(
         name         => ( split /\./, $full_name )[-1],
         full_name    => $full_name,
         is_map_entry => 1,
@@ -194,7 +194,7 @@ sub build_codec () {
         'diff.OneofMsg',
         [ $pick_int, $pick_str, f( 'trailer', 3, 'int32' ) ],
         oneofs => [
-            Proto3::Schema::Oneof->new(
+            Protobuf::Schema::Oneof->new(
                 name => 'choice', oneof_index => 0,
                 fields => [ $pick_int, $pick_str ],
             ),
@@ -206,7 +206,7 @@ sub build_codec () {
         [ f( 'items', 1, 'message', label => 'repeated', type_name => 'diff.Inner' ) ],
     );
 
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'fixtures.proto',
         package  => 'diff',
         messages => [
@@ -215,9 +215,9 @@ sub build_codec () {
         ],
     );
 
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 my $codec = build_codec();

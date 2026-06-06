@@ -1,11 +1,11 @@
-# ABOUTME: Tests for Proto3::Wire facade — fixed32/64, float/double, re-exports.
+# ABOUTME: Tests for Protobuf::Wire facade — fixed32/64, float/double, re-exports.
 # Covers little-endian vectors, round-trips, and NaN/+Inf/-Inf bit-pattern fidelity.
 package main;
 
 use v5.38;
 use warnings;
 use Test::More;
-use Proto3::Wire qw(
+use Protobuf::Wire qw(
     encode_varint decode_varint
     encode_zigzag32 decode_zigzag32
     encode_zigzag64 decode_zigzag64
@@ -17,7 +17,7 @@ use Proto3::Wire qw(
     WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32
     skip_field
 );
-use Proto3::Exception;
+use Protobuf::Exception;
 
 # --- re-export smoke ----------------------------------------------------
 # The facade re-exports the full Varint + Tag public API (single import
@@ -61,7 +61,7 @@ for my $v (0, 1, 42, 255, 256, 65535, 0x04030201, 0xFFFFFFFF) {
 {
     my $err = eval { decode_fixed32("\x01\x02\x03"); 1 } ? undef : $@;
     ok $err, 'truncated fixed32 dies';
-    isa_ok $err, 'Proto3::Exception::Wire::Truncated', 'truncated fixed32 type';
+    isa_ok $err, 'Protobuf::Exception::Wire::Truncated', 'truncated fixed32 type';
 }
 
 # --- fixed64 ------------------------------------------------------------
@@ -90,7 +90,7 @@ for my $v (0, 1, 42, 255, 0xFFFFFFFF, 0x1_0000_0000) {
 {
     my $err = eval { decode_fixed64("\x01\x02\x03\x04\x05\x06\x07"); 1 } ? undef : $@;
     ok $err, 'truncated fixed64 dies';
-    isa_ok $err, 'Proto3::Exception::Wire::Truncated', 'truncated fixed64 type';
+    isa_ok $err, 'Protobuf::Exception::Wire::Truncated', 'truncated fixed64 type';
 }
 
 # --- float --------------------------------------------------------------
@@ -158,14 +158,14 @@ for my $spec (
 {
     my $err = eval { skip_field(6, "x"); 1 } ? undef : $@;
     ok $err, 'skip_field unknown wire type dies';
-    isa_ok $err, 'Proto3::Exception::Wire', 'skip_field unknown wire type is Wire';
+    isa_ok $err, 'Protobuf::Exception::Wire', 'skip_field unknown wire type is Wire';
 }
 
 # Truncated length-delimited payload raises Truncated.
 {
     my $err = eval { skip_field(WIRE_LEN, "\x05ab"); 1 } ? undef : $@;
     ok $err, 'skip_field truncated len dies';
-    isa_ok $err, 'Proto3::Exception::Wire::Truncated', 'skip_field truncated len type';
+    isa_ok $err, 'Protobuf::Exception::Wire::Truncated', 'skip_field truncated len type';
 }
 
 # --- skip_group ---------------------------------------------------------
@@ -175,20 +175,20 @@ for my $spec (
 {
     # Group field 3: contains field 1 varint (08 2a), then EGROUP (1c), then TAIL.
     #   1c = (3 << 3) | 4  = field 3, EGROUP.
-    my $rest = Proto3::Wire::skip_group( "\x08\x2a\x1cTAIL", 3 );
+    my $rest = Protobuf::Wire::skip_group( "\x08\x2a\x1cTAIL", 3 );
     is $rest, "TAIL", 'skip_group consumes a flat group body + EGROUP';
 }
 {
     # Nested same-numbered group must match the correct EGROUP depth.
     #   field 3 SGROUP body: [ field 3 SGROUP (1b) ... EGROUP (1c) ] EGROUP (1c)
     #   inner group body is empty.
-    my $rest = Proto3::Wire::skip_group( "\x1b\x1c\x1cTAIL", 3 );
+    my $rest = Protobuf::Wire::skip_group( "\x1b\x1c\x1cTAIL", 3 );
     is $rest, "TAIL", 'skip_group matches nested same-field group depth';
 }
 {
     # An inner length-delimited field inside the group is skipped by payload.
     #   12 03 61 62 63 = field 2 LEN len-3 "abc", then 1c EGROUP field 3.
-    my $rest = Proto3::Wire::skip_group( "\x12\x03abc\x1cTAIL", 3 );
+    my $rest = Protobuf::Wire::skip_group( "\x12\x03abc\x1cTAIL", 3 );
     is $rest, "TAIL", 'skip_group skips inner length-delimited fields';
 }
 

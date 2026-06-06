@@ -5,31 +5,31 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 sub codec_for ($type) {
     # An enum field carries a type_name (the codec never consults the enum's
     # symbol table — an enum is just a varint integer on the wire), so we skip
     # the resolve pass and hand the field its type_name directly.
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'f', json_name => 'f', number => 1,
         label => 'singular', type => $type, type_name => 'pkg.Color',
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'M', fields => [$f],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file(
-        Proto3::Schema::File->new(
+        Protobuf::Schema::File->new(
             name => 'x.proto', package => '',
             messages => [$m], enums => [], services => [], imports => [],
         )
     );
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # enum: an over-width all-ones varint (0xFFFFFFFFFFFFFFFF) wraps to a signed

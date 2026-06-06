@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for Proto3::Wire::Varint — varint + zigzag encode/decode.
+# ABOUTME: Unit tests for Protobuf::Wire::Varint — varint + zigzag encode/decode.
 # Covers round-trips, known vectors, the (value, rest) decode contract, the
 # Math::BigInt fallback path, and truncated / over-long / negative failure modes.
 
@@ -8,7 +8,7 @@ use Test::More;
 
 use Math::BigInt;
 
-use Proto3::Wire::Varint qw(
+use Protobuf::Wire::Varint qw(
     encode_varint decode_varint
     encode_zigzag32 decode_zigzag32
     encode_zigzag64 decode_zigzag64
@@ -114,12 +114,12 @@ sub num_is {
     );
     for my $v (@big) {
         is(
-            Proto3::Wire::Varint::_encode_varint_bigint($v),
+            Protobuf::Wire::Varint::_encode_varint_bigint($v),
             encode_varint($v),
             "forced-bigint encode matches native for $v",
         );
         my ( $decoded, $rest ) =
-            Proto3::Wire::Varint::_decode_varint_bigint( encode_varint($v) );
+            Protobuf::Wire::Varint::_decode_varint_bigint( encode_varint($v) );
         num_is( $decoded, $v, "forced-bigint decode matches native for $v" );
         is( $rest, '',
             "forced-bigint decode for $v leaves no trailing bytes" );
@@ -128,37 +128,37 @@ sub num_is {
 
 # ---------------------------------------------------------------------------
 # T-wire-4: a truncated varint (continuation bit set, then the buffer ends)
-# raises Proto3::Exception::Wire::Truncated.
+# raises Protobuf::Exception::Wire::Truncated.
 # ---------------------------------------------------------------------------
 {
     eval { decode_varint("\xac") };    # continuation bit set, no terminator
     my $err = $@;
     ok( ref $err, 'truncated varint dies with an object' );
-    isa_ok( $err, 'Proto3::Exception::Wire::Truncated',
+    isa_ok( $err, 'Protobuf::Exception::Wire::Truncated',
         'truncated varint raises Wire::Truncated' );
 
     eval { decode_varint('') };
-    isa_ok( $@, 'Proto3::Exception::Wire::Truncated',
+    isa_ok( $@, 'Protobuf::Exception::Wire::Truncated',
         'empty input raises Wire::Truncated' );
 }
 
 # ---------------------------------------------------------------------------
 # T-wire-5: an 11-byte varint (no terminator within the 10-byte limit) raises
-# Proto3::Exception::Wire::VarintTooLong.
+# Protobuf::Exception::Wire::VarintTooLong.
 # ---------------------------------------------------------------------------
 {
     my $overlong = "\xff" x 11;        # 11 continuation bytes, never terminates
     eval { decode_varint($overlong) };
-    isa_ok( $@, 'Proto3::Exception::Wire::VarintTooLong',
+    isa_ok( $@, 'Protobuf::Exception::Wire::VarintTooLong',
         'over-long varint raises Wire::VarintTooLong' );
 }
 
 # ---------------------------------------------------------------------------
-# A negative value passed to encode_varint raises Proto3::Exception::Argument.
+# A negative value passed to encode_varint raises Protobuf::Exception::Argument.
 # ---------------------------------------------------------------------------
 {
     eval { encode_varint(-1) };
-    isa_ok( $@, 'Proto3::Exception::Argument',
+    isa_ok( $@, 'Protobuf::Exception::Argument',
         'negative value to encode_varint raises Argument' );
 }
 

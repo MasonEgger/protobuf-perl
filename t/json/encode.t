@@ -1,4 +1,4 @@
-# ABOUTME: Proto3::JSON encode tests (Step 28) — proto3 JSON output mapping:
+# ABOUTME: Protobuf::JSON encode tests (Step 28) — proto3 JSON output mapping:
 # scalars, 64-bit-as-string, enum-as-name, camelCase, base64 bytes, default-omit,
 # emit_defaults, WKT delegation, and maps-as-objects (spec §4.9, T-json-2..6).
 use v5.38;
@@ -8,30 +8,30 @@ use lib 'lib';
 
 use JSON::PP ();
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Enum;
-use Proto3::Codec;
-use Proto3::WKT;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Enum;
+use Protobuf::Codec;
+use Protobuf::WKT;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a codec over a one-file schema holding the given Schema elements.
 my sub codec_for {
     my (%args) = @_;
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => $args{messages} // [],
         enums    => $args{enums}    // [],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # Decode a JSON string back to a Perl structure for order-independent asserts.
@@ -40,7 +40,7 @@ my sub from_json ($string) {
 }
 
 my sub scalar_field ( $name, $number, $type, %extra ) {
-    return Proto3::Schema::Field->new(
+    return Protobuf::Schema::Field->new(
         name => $name, number => $number, type => $type, %extra,
     );
 }
@@ -48,7 +48,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.1: all scalar types serialize -----------------------------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Scalars',
         full_name => 'pkg.Scalars',
         fields    => [
@@ -92,7 +92,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.2: 64-bit integers emit as JSON STRINGS (T-json-2 encode) -------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Wide',
         full_name => 'pkg.Wide',
         fields    => [
@@ -122,7 +122,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.3: enum as name by default; enums_as_ints emits the number ------
 
 {
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name      => 'Color',
         full_name => 'pkg.Color',
         values    => [
@@ -131,11 +131,11 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
             { name => 'BLUE',  number => 2 },
         ],
     );
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Painted',
         full_name => 'pkg.Painted',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name      => 'color',
                 number    => 1,
                 type      => 'enum',
@@ -164,7 +164,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.4: camelCase field names by default; preserve_field_names -------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Named',
         full_name => 'pkg.Named',
         fields    => [
@@ -198,7 +198,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.5: bytes emit as base64 -----------------------------------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Blob',
         full_name => 'pkg.Blob',
         fields    => [ scalar_field( 'data', 1, 'bytes' ) ],
@@ -214,7 +214,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.6: default-valued singular omitted; emit_defaults includes it ----
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Defaulted',
         full_name => 'pkg.Defaulted',
         fields    => [
@@ -239,9 +239,9 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.7a: WKT fields use their special forms (T-json-6 encode) ---------
 
 {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
+    my $codec = Protobuf::Codec->new( schema => $schema );
 
     # Timestamp -> RFC3339 string (special form, not a { seconds, nanos } object).
     my $ts_json = $codec->encode_json(
@@ -260,17 +260,17 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.7b: a WKT-typed field on a normal message delegates -------------
 
 {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
-    my $outer = Proto3::Schema::File->new(
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
+    my $outer = Protobuf::Schema::File->new(
         name     => 'outer.proto',
         package  => 'pkg',
         messages => [
-            Proto3::Schema::Message->new(
+            Protobuf::Schema::Message->new(
                 name      => 'Event',
                 full_name => 'pkg.Event',
                 fields    => [
-                    Proto3::Schema::Field->new(
+                    Protobuf::Schema::Field->new(
                         name      => 'at',
                         number    => 1,
                         type      => 'message',
@@ -282,7 +282,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
     );
     $schema->add_file($outer);
     $schema->resolve;
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $codec = Protobuf::Codec->new( schema => $schema );
 
     my $json = $codec->encode_json(
         'pkg.Event',
@@ -296,7 +296,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 
 {
     # map<string,int32> attrs = 1;  modeled as repeated synthetic MapEntry.
-    my $entry = Proto3::Schema::Message->new(
+    my $entry = Protobuf::Schema::Message->new(
         name         => 'AttrsEntry',
         full_name    => 'pkg.Mapped.AttrsEntry',
         is_map_entry => 1,
@@ -305,11 +305,11 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
             scalar_field( 'value', 2, 'int32' ),
         ],
     );
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Mapped',
         full_name => 'pkg.Mapped',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name      => 'attrs',
                 number    => 1,
                 type      => 'message',
@@ -333,7 +333,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 28.7d: a bool map key emits as "true"/"false", not "1"/"0" ----------
 {
     # map<bool,int32> flags = 1;  proto3 JSON spells bool keys true/false.
-    my $entry = Proto3::Schema::Message->new(
+    my $entry = Protobuf::Schema::Message->new(
         name         => 'FlagsEntry',
         full_name    => 'pkg.BoolMapped.FlagsEntry',
         is_map_entry => 1,
@@ -342,11 +342,11 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
             scalar_field( 'value', 2, 'int32' ),
         ],
     );
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'BoolMapped',
         full_name => 'pkg.BoolMapped',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name      => 'flags',
                 number    => 1,
                 type      => 'message',

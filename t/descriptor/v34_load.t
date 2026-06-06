@@ -6,7 +6,7 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::DescriptorSet;
+use Protobuf::DescriptorSet;
 
 use File::Spec ();
 
@@ -14,8 +14,8 @@ use File::Spec ();
 my $FDS = File::Spec->catfile(qw(share proto conformance-v34.fds));
 ok( -f $FDS, "v34 FDS present at $FDS" ) or BAIL_OUT("missing $FDS");
 
-my $schema = Proto3::DescriptorSet->load_file($FDS);
-isa_ok( $schema, 'Proto3::Schema', 'load_file returns a Schema' );
+my $schema = Protobuf::DescriptorSet->load_file($FDS);
+isa_ok( $schema, 'Protobuf::Schema', 'load_file returns a Schema' );
 
 # ----------------------------------------------------------------------
 # All five required test message types are present.
@@ -109,8 +109,8 @@ is( field_named( $p3, 'packed_int32' )->is_packed, 1,
 # bytes DA 04); unpacked_int32 is field 89 (VARINT tag (89<<3)|0 = bytes C8 05).
 # ----------------------------------------------------------------------
 {
-    require Proto3::Codec;
-    my $codec = Proto3::Codec->new( schema => $schema );
+    require Protobuf::Codec;
+    my $codec = Protobuf::Codec->new( schema => $schema );
     my $type  = 'protobuf_test_messages.proto2.TestAllTypesProto2';
 
     my $packed_wire = $codec->encode( $type, { packed_int32 => [ 1, 2, 3 ] } );

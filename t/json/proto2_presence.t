@@ -1,4 +1,4 @@
-# ABOUTME: Proto3::JSON encode tests for proto2/editions explicit presence — a
+# ABOUTME: Protobuf::JSON encode tests for proto2/editions explicit presence — a
 # proto2 singular scalar set to its type-zero MUST be emitted in JSON output,
 # while a proto3 implicit-presence field at zero stays omitted (no regression).
 use v5.38;
@@ -8,12 +8,12 @@ use lib 'lib';
 
 use JSON::PP ();
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Features;
-use Proto3::Codec;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Features;
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
@@ -21,22 +21,22 @@ use Proto3::Codec;
 # Schema->resolve does. A proto2 field becomes explicit-presence even without a
 # literal `optional` label.
 my sub install_features ($edition, $fields) {
-    my $features = Proto3::Schema::Features->for_edition($edition);
+    my $features = Protobuf::Schema::Features->for_edition($edition);
     $_->set_features($features) for @$fields;
     return;
 }
 
 # Build a one-message codec from already-constructed field objects.
 my sub codec_for ($fields) {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M', fields => $fields,
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'm.proto', package => 'pkg', messages => [$message],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 my sub from_json ($string) { return JSON::PP->new->decode($string) }
@@ -44,13 +44,13 @@ my sub from_json ($string) { return JSON::PP->new->decode($string) }
 # --- proto2 explicit-presence scalar at zero IS emitted -----------------
 
 {
-    my $int  = Proto3::Schema::Field->new(
+    my $int  = Protobuf::Schema::Field->new(
         name => 'n', number => 1, type => 'int32', label => 'singular',
     );
-    my $str  = Proto3::Schema::Field->new(
+    my $str  = Protobuf::Schema::Field->new(
         name => 's', number => 2, type => 'string', label => 'singular',
     );
-    my $bool = Proto3::Schema::Field->new(
+    my $bool = Protobuf::Schema::Field->new(
         name => 'b', number => 3, type => 'bool', label => 'singular',
     );
     install_features( 'proto2', [ $int, $str, $bool ] );
@@ -72,7 +72,7 @@ my sub from_json ($string) { return JSON::PP->new->decode($string) }
 # --- proto3 implicit-presence scalar at zero stays OMITTED (no regression)
 
 {
-    my $int = Proto3::Schema::Field->new(
+    my $int = Protobuf::Schema::Field->new(
         name => 'n', number => 1, type => 'int32', label => 'singular',
     );
     install_features( 'proto3', [$int] );

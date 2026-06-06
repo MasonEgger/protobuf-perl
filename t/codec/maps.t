@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for Proto3::Codec encode/decode of map fields (Step 13).
+# ABOUTME: Unit tests for Protobuf::Codec encode/decode of map fields (Step 13).
 # Maps are repeated synthetic MapEntry{key=1,value=2}: deterministic key-sorted
 # encode, last-wins decode, empty-omit, and key-type validation at construction.
 use v5.38;
@@ -6,25 +6,25 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a codec over a one-file schema holding the given Schema::Message list.
 my sub codec_for (@messages) {
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [@messages],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # A synthetic MapEntry message: key (field 1) of $key_type, value (field 2) of
@@ -33,15 +33,15 @@ my sub map_entry_message ($full_name, $key_type, $value_type, %opts) {
     my @value_extra;
     @value_extra = ( type_name => $opts{value_type_name} )
         if $value_type eq 'message';
-    return Proto3::Schema::Message->new(
+    return Protobuf::Schema::Message->new(
         name         => ( split /\./, $full_name )[-1],
         full_name    => $full_name,
         is_map_entry => 1,
         fields       => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'key', number => 1, type => $key_type,
             ),
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'value', number => 2, type => $value_type,
                 @value_extra,
             ),
@@ -51,7 +51,7 @@ my sub map_entry_message ($full_name, $key_type, $value_type, %opts) {
 
 # A map field 'm' (number 1) whose element type is the MapEntry $entry_full_name.
 my sub map_field ($entry_full_name) {
-    return Proto3::Schema::Field->new(
+    return Protobuf::Schema::Field->new(
         name      => 'm',
         number    => 1,
         type      => 'message',
@@ -63,7 +63,7 @@ my sub map_field ($entry_full_name) {
 
 # A message named pkg.M with a single map field 'm' over the given MapEntry.
 my sub map_holder ($entry_full_name) {
-    return Proto3::Schema::Message->new(
+    return Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [ map_field($entry_full_name) ],
@@ -112,11 +112,11 @@ my sub map_holder ($entry_full_name) {
 
 {
     # Value message: pkg.Val { int32 v = 1 }.
-    my $val = Proto3::Schema::Message->new(
+    my $val = Protobuf::Schema::Message->new(
         name      => 'Val',
         full_name => 'pkg.Val',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'v', number => 1, type => 'int32',
             ),
         ],
@@ -165,7 +165,7 @@ for my $bad_key (qw(float double bytes)) {
         1;
     } or $err = $@;
     ok(
-        $err && $err->isa('Proto3::Exception::Schema'),
+        $err && $err->isa('Protobuf::Exception::Schema'),
         "13.4: map key type '$bad_key' raises Schema at codec construction"
     );
 }

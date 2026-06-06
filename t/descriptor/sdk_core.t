@@ -6,7 +6,7 @@ use Test::More;
 use lib 'lib';
 use lib 't/lib';
 
-use Proto3Test::Protoc qw(have_protoc);
+use ProtobufTest::Protoc qw(have_protoc);
 
 # The sdk-core proto graph is not available on this box by default. A path is
 # supplied out-of-band via PROTO3_SDK_CORE_PROTO_ROOT (an include root holding
@@ -20,7 +20,7 @@ plan skip_all =>
 plan skip_all => 'protoc not on PATH' unless have_protoc();
 plan skip_all => "sdk-core proto root not a directory: $root" unless -d $root;
 
-use Proto3::DescriptorSet;
+use Protobuf::DescriptorSet;
 
 use File::Temp ();
 use File::Spec ();
@@ -62,7 +62,7 @@ is( $rc, 0, 'protoc compiled the sdk-core graph to an FDS' ) or do {
     exit 0;
 };
 
-my $schema = Proto3::DescriptorSet->load_file($fds_path);
+my $schema = Protobuf::DescriptorSet->load_file($fds_path);
 
 # Every message and enum in the graph is indexed.
 cmp_ok( scalar( @{ $schema->all_messages } ),

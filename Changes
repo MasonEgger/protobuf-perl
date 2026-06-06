@@ -1,5 +1,19 @@
-# ABOUTME: Release changelog for the Proto3 distribution (CPAN::Changes format).
-Revision history for Proto3
+# ABOUTME: Release changelog for the Protobuf distribution (CPAN::Changes format).
+Revision history for Protobuf
+
+{{$NEXT}}
+          - Renamed the distribution and namespace from Proto3 to Protobuf
+            (Proto3::* -> Protobuf::*; bin/proto3-* -> bin/protobuf-*). The
+            library covers the whole format, not the proto3 dialect, so the
+            name now reflects that.
+          - Full protobuf v34 conformance: proto2, proto3, and editions 2023,
+            both Required and Recommended (--enforce_recommended), zero
+            failures. Adds proto2 (explicit presence, required fields,
+            defaults, groups, extensions, MessageSet, closed enums, expanded
+            repeated) and editions support via a resolved feature model.
+          - CI runs the prebuilt v34 conformance runner as a blocking gate on
+            every push and pull request, uploading the full result as an
+            artifact.
 
 0.1.0     2026-06-01
           - Initial release.
@@ -12,10 +26,10 @@ Revision history for Proto3
           - Canonical proto3 JSON mapping, both directions.
           - Well-known types: Timestamp, Duration, Any, Struct/Value/ListValue/
             NullValue, FieldMask, Empty, and the scalar wrappers.
-          - Runtime class generation from a schema (Proto3::Class::Generator).
-          - Ahead-of-time code generation (bin/proto3-gen-perl) with
-            deterministic, byte-identical output.
-          - FileDescriptorSet loading (Proto3::DescriptorSet).
-          - Conformance testee (bin/proto3-conformance) plus a skip-aware
-            harness that drives Google's conformance_test_runner in CI.
+          - Runtime class generation from a schema.
+          - Ahead-of-time code generation with deterministic, byte-identical
+            output.
+          - FileDescriptorSet loading.
+          - Conformance testee plus a skip-aware harness that drives Google's
+            conformance_test_runner in CI.
           - Zero install-time XS; requires Perl 5.38+.

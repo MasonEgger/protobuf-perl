@@ -5,16 +5,16 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::DescriptorSet;
-use Proto3::Codec;
-use Proto3::JSON;
+use Protobuf::DescriptorSet;
+use Protobuf::Codec;
+use Protobuf::JSON;
 
 my $fds = 'share/proto/conformance-v34.fds';
 plan skip_all => "missing $fds" unless -f $fds;
 
-my $schema = Proto3::DescriptorSet->load_file($fds);
-my $codec  = Proto3::Codec->new( schema => $schema );
-my $json   = Proto3::JSON->new( codec => $codec, schema => $schema );
+my $schema = Protobuf::DescriptorSet->load_file($fds);
+my $codec  = Protobuf::Codec->new( schema => $schema );
+my $json   = Protobuf::JSON->new( codec => $codec, schema => $schema );
 my $T = 'protobuf_test_messages.proto2.TestAllTypesProto2';
 
 # A bracketed extension key decodes and re-encodes verbatim.

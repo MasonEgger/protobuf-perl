@@ -1,16 +1,16 @@
-# ABOUTME: Tests for Proto3::Parser::Grammar extended body constructs — nested
+# ABOUTME: Tests for Protobuf::Parser::Grammar extended body constructs — nested
 # messages, enums (allow_alias), oneof, map desugaring, reserved, comments (§4.4).
 use v5.38;
 use strict;
 use warnings;
 use Test::More;
 
-use Proto3::Parser::Grammar;
-use Proto3::Exception;
+use Protobuf::Parser::Grammar;
+use Protobuf::Exception;
 
-# Helper: parse proto3 source into a Proto3::Schema::File.
+# Helper: parse proto3 source into a Protobuf::Schema::File.
 sub parse ($src, $name = 'test.proto') {
-    return Proto3::Parser::Grammar->new(
+    return Protobuf::Parser::Grammar->new(
         source    => $src,
         file_name => $name,
     )->parse;
@@ -58,7 +58,7 @@ PROTO
 
     my $nested = messages_by_name( $outer->nested_messages );
     my $inner  = $nested->{Inner};
-    isa_ok $inner, 'Proto3::Schema::Message', 'Inner is a Schema::Message';
+    isa_ok $inner, 'Protobuf::Schema::Message', 'Inner is a Schema::Message';
     is $inner->name,      'Inner',         'inner name';
     is $inner->full_name, 'a.b.Outer.Inner', 'inner full_name nests under outer';
 
@@ -83,7 +83,7 @@ enum Color {
 PROTO
     my $file = parse($src);
     my $enum = $file->enums->[0];
-    isa_ok $enum, 'Proto3::Schema::Enum', 'top-level enum parsed';
+    isa_ok $enum, 'Protobuf::Schema::Enum', 'top-level enum parsed';
     is $enum->name,        'Color',  'enum name';
     is $enum->full_name,   'e.Color', 'enum full_name includes package';
     ok $enum->allow_alias, 'allow_alias captured as true';
@@ -100,7 +100,7 @@ enum Bad {
 }
 PROTO
     my $err = exception_from( sub { parse($dup) } );
-    isa_ok $err, 'Proto3::Exception::Schema',
+    isa_ok $err, 'Protobuf::Exception::Schema',
         'duplicate enum number without allow_alias raises';
 };
 
@@ -118,7 +118,7 @@ message Holder {
 PROTO
     my $holder = parse($src)->messages->[0];
     my $enum   = $holder->nested_enums->[0];
-    isa_ok $enum, 'Proto3::Schema::Enum', 'nested enum parsed';
+    isa_ok $enum, 'Protobuf::Schema::Enum', 'nested enum parsed';
     is $enum->full_name, 'p.Holder.State', 'nested enum full_name';
 };
 
@@ -140,7 +140,7 @@ PROTO
 
     is scalar @{ $msg->oneofs }, 1, 'one oneof recorded';
     my $oneof = $msg->oneofs->[0];
-    isa_ok $oneof, 'Proto3::Schema::Oneof', 'oneof is a Schema::Oneof';
+    isa_ok $oneof, 'Protobuf::Schema::Oneof', 'oneof is a Schema::Oneof';
     is $oneof->name,        'choice', 'oneof name';
     is $oneof->oneof_index, 0,        'oneof_index is 0';
 
@@ -183,7 +183,7 @@ PROTO
     is $field->type_name, $entry_name, 'map field type_name is MapEntry';
 
     my $entry = messages_by_name( $holder->nested_messages )->{AttrsEntry};
-    isa_ok $entry, 'Proto3::Schema::Message', 'AttrsEntry synthesized';
+    isa_ok $entry, 'Protobuf::Schema::Message', 'AttrsEntry synthesized';
     is $entry->full_name, $entry_name, 'AttrsEntry full_name';
     ok $entry->is_map_entry, 'AttrsEntry flagged is_map_entry';
 

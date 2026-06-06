@@ -5,34 +5,34 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 # Build a one-field message of the given type/label under the given edition
 # syntax, resolve it (so utf8_validation features are populated), and return a
 # ready codec. proto3 strings resolve to VERIFY; proto2 strings to NONE.
 sub codec_for ( $type, %opt ) {
     my $label = $opt{label} // 'singular';
-    my $f     = Proto3::Schema::Field->new(
+    my $f     = Protobuf::Schema::Field->new(
         name  => 'f', json_name => 'f', number => 1,
         label => $label, type => $type,
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'M', fields => [$f],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file(
-        Proto3::Schema::File->new(
+        Protobuf::Schema::File->new(
             name     => 'x.proto', package => '',
             syntax   => $opt{syntax} // 'proto3',
             messages => [$m], enums => [], services => [], imports => [],
         )
     );
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # The conformance RejectInvalidUtf8 payload: field 1 (LEN), 4 bytes a0 b0 c0 d0,
@@ -46,7 +46,7 @@ my $BAD = "\x0a\x04\xa0\xb0\xc0\xd0";
         'VERIFY', 'proto3 string field resolves to utf8_validation=VERIFY' );
     my $ok = eval { $codec->decode( 'M', $BAD ); 1 };
     ok( !$ok, 'proto3 string rejects invalid UTF-8 on the wire' );
-    isa_ok( $@, 'Proto3::Exception::Codec::TypeMismatch',
+    isa_ok( $@, 'Protobuf::Exception::Codec::TypeMismatch',
         'rejection raises a Codec::TypeMismatch' );
 }
 

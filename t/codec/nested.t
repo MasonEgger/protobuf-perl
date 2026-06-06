@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for Proto3::Codec nested messages, enums, and oneofs (Step 14).
+# ABOUTME: Unit tests for Protobuf::Codec nested messages, enums, and oneofs (Step 14).
 # Embedded singular messages (LEN, unset-omitted), enum-as-varint (unknown number
 # preserved), oneof encode-one-member / decode-last-wins, and 3-level nesting.
 use v5.38;
@@ -6,50 +6,50 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Oneof;
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Oneof;
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a codec over a one-file schema holding the given Schema::Message list.
 my sub codec_for (@messages) {
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [@messages],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # --- 14.1 / T-codec-7: embedded message round-trip ----------------------
 
 {
     # pkg.Inner { int32 a = 1; string b = 2 }
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name      => 'Inner',
         full_name => 'pkg.Inner',
         fields    => [
-            Proto3::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
-            Proto3::Schema::Field->new( name => 'b', number => 2, type => 'string' ),
+            Protobuf::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'b', number => 2, type => 'string' ),
         ],
     );
     # pkg.Outer { Inner inner = 1; int32 tail = 2 }
-    my $outer = Proto3::Schema::Message->new(
+    my $outer = Protobuf::Schema::Message->new(
         name      => 'Outer',
         full_name => 'pkg.Outer',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'inner', number => 1, type => 'message',
                 type_name => 'pkg.Inner',
             ),
-            Proto3::Schema::Field->new( name => 'tail', number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'tail', number => 2, type => 'int32' ),
         ],
     );
     my $codec = codec_for( $outer, $inner );
@@ -74,22 +74,22 @@ my sub codec_for (@messages) {
 # --- 14.1: unset embedded message field omitted entirely ----------------
 
 {
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name      => 'Inner',
         full_name => 'pkg.Inner',
         fields    => [
-            Proto3::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
         ],
     );
-    my $outer = Proto3::Schema::Message->new(
+    my $outer = Protobuf::Schema::Message->new(
         name      => 'Outer',
         full_name => 'pkg.Outer',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'inner', number => 1, type => 'message',
                 type_name => 'pkg.Inner',
             ),
-            Proto3::Schema::Field->new( name => 'tail', number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'tail', number => 2, type => 'int32' ),
         ],
     );
     my $codec = codec_for( $outer, $inner );
@@ -111,11 +111,11 @@ my sub codec_for (@messages) {
 
 {
     # pkg.M { Color color = 1 }  (enum carried as the integer value)
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'color', number => 1, type => 'enum',
                 type_name => 'pkg.Color',
             ),
@@ -145,11 +145,11 @@ my sub codec_for (@messages) {
 # --- 14.3: unknown enum number preserved as int -------------------------
 
 {
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'color', number => 1, type => 'enum',
                 type_name => 'pkg.Color',
             ),
@@ -170,21 +170,21 @@ my sub codec_for (@messages) {
 
 # pkg.M with oneof choice { int32 i = 1; string s = 2 } plus a plain field.
 my sub oneof_message () {
-    my $i = Proto3::Schema::Field->new(
+    my $i = Protobuf::Schema::Field->new(
         name => 'i', number => 1, type => 'int32', oneof_index => 0,
     );
-    my $s = Proto3::Schema::Field->new(
+    my $s = Protobuf::Schema::Field->new(
         name => 's', number => 2, type => 'string', oneof_index => 0,
     );
-    my $plain = Proto3::Schema::Field->new(
+    my $plain = Protobuf::Schema::Field->new(
         name => 'plain', number => 3, type => 'int32',
     );
-    return Proto3::Schema::Message->new(
+    return Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [ $i, $s, $plain ],
         oneofs    => [
-            Proto3::Schema::Oneof->new(
+            Protobuf::Schema::Oneof->new(
                 name => 'choice', oneof_index => 0, fields => [ $i, $s ],
             ),
         ],
@@ -232,26 +232,26 @@ my sub oneof_message () {
 
 {
     # pkg.L3 { int32 v = 1 }
-    my $l3 = Proto3::Schema::Message->new(
+    my $l3 = Protobuf::Schema::Message->new(
         name => 'L3', full_name => 'pkg.L3',
         fields => [
-            Proto3::Schema::Field->new( name => 'v', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'v', number => 1, type => 'int32' ),
         ],
     );
     # pkg.L2 { L3 l3 = 1 }
-    my $l2 = Proto3::Schema::Message->new(
+    my $l2 = Protobuf::Schema::Message->new(
         name => 'L2', full_name => 'pkg.L2',
         fields => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'l3', number => 1, type => 'message', type_name => 'pkg.L3',
             ),
         ],
     );
     # pkg.L1 { L2 l2 = 1 }
-    my $l1 = Proto3::Schema::Message->new(
+    my $l1 = Protobuf::Schema::Message->new(
         name => 'L1', full_name => 'pkg.L1',
         fields => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'l2', number => 1, type => 'message', type_name => 'pkg.L2',
             ),
         ],

@@ -1,13 +1,13 @@
 # ABOUTME: Step 31 — the conformance suite harness (spec §4.11, T-conf-1/2/3).
 # Unit-tests the runner-output verdict logic always; runs the live Google
-# conformance_test_runner against bin/proto3-conformance only when one is found
+# conformance_test_runner against bin/protobuf-conformance only when one is found
 # (env CONFORMANCE_TEST_RUNNER or on PATH), else skips so the suite stays green.
 use v5.38;
 use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Conformance;
+use Protobuf::Conformance;
 
 # ----------------------------------------------------------------------
 # Verdict logic (always runs — this is OUR code, not the external runner).
@@ -22,7 +22,7 @@ use Proto3::Conformance;
     my $output = <<'END';
 CONFORMANCE SUITE PASSED: 1234 successes, 5 skipped, 6 expected failures, 0 unexpected failures.
 END
-    my $v = Proto3::Conformance::parse_runner_output($output);
+    my $v = Protobuf::Conformance::parse_runner_output($output);
     is_deeply( $v->{required_failures}, [], 'clean run: no required failures' );
     is_deeply( $v->{recommended_failures}, [], 'clean run: no recommended failures' );
     ok( $v->{parsed_summary}, 'clean run: summary line parsed' );
@@ -35,7 +35,7 @@ END
 ERROR, test=Required.Proto3.ProtobufInput.ValidDataScalar.INT32: roundtrip mismatch
 CONFORMANCE SUITE FAILED: 1200 successes, 0 skipped, 6 expected failures, 1 unexpected failures.
 END
-    my $v = Proto3::Conformance::parse_runner_output($output);
+    my $v = Protobuf::Conformance::parse_runner_output($output);
     is_deeply(
         $v->{required_failures},
         ['Required.Proto3.ProtobufInput.ValidDataScalar.INT32'],
@@ -50,7 +50,7 @@ END
 ERROR, test=Recommended.Proto3.JsonInput.FieldNameInLowerCamel: optional formatting
 CONFORMANCE SUITE PASSED: 1233 successes, 5 skipped, 7 expected failures, 0 unexpected failures.
 END
-    my $v = Proto3::Conformance::parse_runner_output($output);
+    my $v = Protobuf::Conformance::parse_runner_output($output);
     is_deeply( $v->{required_failures}, [],
         'recommended-only run: no required failures -> not fatal' );
     is_deeply(
@@ -68,7 +68,7 @@ ERROR, test=Recommended.Proto3.B: meh
 ERROR, test=Required.Proto3.C: boom
 CONFORMANCE SUITE FAILED: 10 successes, 0 skipped, 0 expected failures, 2 unexpected failures.
 END
-    my $v = Proto3::Conformance::parse_runner_output($output);
+    my $v = Protobuf::Conformance::parse_runner_output($output);
     is_deeply(
         [ sort @{ $v->{required_failures} } ],
         [ 'Required.Proto3.A', 'Required.Proto3.C' ],
@@ -90,7 +90,7 @@ ERROR, test=Recommended.Proto2.JsonInput.FieldNameExtension: meh
 ERROR, test=Required.Editions.Proto3.Foo: boom
 CONFORMANCE SUITE FAILED: 5 successes, 0 skipped, 0 expected failures, 3 unexpected failures.
 END
-    my $v = Proto3::Conformance::parse_runner_output($output);
+    my $v = Protobuf::Conformance::parse_runner_output($output);
     is_deeply(
         [ sort @{ $v->{required_failures} } ],
         [
@@ -111,28 +111,28 @@ END
     local $ENV{CONFORMANCE_TEST_RUNNER};
     delete $ENV{CONFORMANCE_TEST_RUNNER};
     local $ENV{PATH} = '';
-    is( Proto3::Conformance::find_runner(), undef,
+    is( Protobuf::Conformance::find_runner(), undef,
         'find_runner: undef when no runner present' );
 }
 
 # find_runner honors an explicit executable path via the env var.
 {
     local $ENV{CONFORMANCE_TEST_RUNNER} = $^X;    # the perl binary is executable
-    is( Proto3::Conformance::find_runner(), $^X,
+    is( Protobuf::Conformance::find_runner(), $^X,
         'find_runner: honors CONFORMANCE_TEST_RUNNER when executable' );
 }
 
 # ----------------------------------------------------------------------
 # Live integration (T-conf-1/2): drive the real Google runner against
-# bin/proto3-conformance. Skipped on this box (no runner installed); CI sets
+# bin/protobuf-conformance. Skipped on this box (no runner installed); CI sets
 # CONFORMANCE_TEST_RUNNER so this stage actually exercises the suite.
 # ----------------------------------------------------------------------
-my $runner = Proto3::Conformance::find_runner();
+my $runner = Protobuf::Conformance::find_runner();
 SKIP: {
     skip 'conformance_test_runner not available (set CONFORMANCE_TEST_RUNNER to run)', 3
         unless defined $runner;
 
-    my $testee = 'bin/proto3-conformance';
+    my $testee = 'bin/protobuf-conformance';
     ok( -x $testee, "testee $testee is executable" );
 
     # Run the full suite with recommended tests enforced. The library targets
@@ -145,7 +145,7 @@ SKIP: {
     my $output = `$cmd`;
     diag($output);
 
-    my $v = Proto3::Conformance::parse_runner_output($output);
+    my $v = Protobuf::Conformance::parse_runner_output($output);
 
     is_deeply( $v->{required_failures}, [],
         'live run: zero required failures across all syntaxes (T-conf-1)' )

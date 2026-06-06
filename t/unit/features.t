@@ -1,19 +1,19 @@
-# ABOUTME: Unit tests for Proto3::Schema::Features (T0.2) — the edition feature
+# ABOUTME: Unit tests for Protobuf::Schema::Features (T0.2) — the edition feature
 # model: edition defaults, override merge, and proto3/proto2/edition2023 resolution.
 use v5.38;
 use warnings;
 use Test::More;
 
-use Proto3::Schema::Features;
-use Proto3::Schema::Field;
-use Proto3::Schema::File;
-use Proto3::Schema::Enum;
-use Proto3::Schema::Message;
-use Proto3::Schema;
+use Protobuf::Schema::Features;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Enum;
+use Protobuf::Schema::Message;
+use Protobuf::Schema;
 
 # --- (a) edition default FeatureSets ----------------------------------------
 {
-    my $p2 = Proto3::Schema::Features->for_edition('proto2');
+    my $p2 = Protobuf::Schema::Features->for_edition('proto2');
     is( $p2->field_presence,          'EXPLICIT',        'proto2 field_presence' );
     is( $p2->enum_type,               'CLOSED',          'proto2 enum_type' );
     is( $p2->repeated_field_encoding, 'EXPANDED',        'proto2 repeated_field_encoding' );
@@ -21,7 +21,7 @@ use Proto3::Schema;
     is( $p2->utf8_validation,         'NONE',            'proto2 utf8_validation' );
     is( $p2->json_format,             'ALLOW',           'proto2 json_format' );
 
-    my $p3 = Proto3::Schema::Features->for_edition('proto3');
+    my $p3 = Protobuf::Schema::Features->for_edition('proto3');
     is( $p3->field_presence,          'IMPLICIT',        'proto3 field_presence' );
     is( $p3->enum_type,               'OPEN',            'proto3 enum_type' );
     is( $p3->repeated_field_encoding, 'PACKED',          'proto3 repeated_field_encoding' );
@@ -29,7 +29,7 @@ use Proto3::Schema;
     is( $p3->utf8_validation,         'VERIFY',          'proto3 utf8_validation' );
     is( $p3->json_format,             'ALLOW',           'proto3 json_format' );
 
-    my $e23 = Proto3::Schema::Features->for_edition('2023');
+    my $e23 = Protobuf::Schema::Features->for_edition('2023');
     is( $e23->field_presence,          'EXPLICIT',        'edition2023 field_presence' );
     is( $e23->enum_type,               'OPEN',            'edition2023 enum_type' );
     is( $e23->repeated_field_encoding, 'PACKED',          'edition2023 repeated_field_encoding' );
@@ -40,19 +40,19 @@ use Proto3::Schema;
 
 # --- (b) override merging: parent override flows to child unless overridden --
 {
-    my $base = Proto3::Schema::Features->for_edition('2023');
+    my $base = Protobuf::Schema::Features->for_edition('2023');
 
     # File-level override sets enum_type=CLOSED; merged over base.
-    my $file_level = Proto3::Schema::Features->merge( $base, { enum_type => 'CLOSED' } );
+    my $file_level = Protobuf::Schema::Features->merge( $base, { enum_type => 'CLOSED' } );
     is( $file_level->enum_type,    'CLOSED',   'file override applies enum_type=CLOSED' );
     is( $file_level->field_presence, 'EXPLICIT', 'unrelated feature inherited from base' );
 
     # Field inherits file-level CLOSED unless it overrides.
-    my $field_inherit = Proto3::Schema::Features->merge( $file_level, {} );
+    my $field_inherit = Protobuf::Schema::Features->merge( $file_level, {} );
     is( $field_inherit->enum_type, 'CLOSED', 'empty field override inherits parent CLOSED' );
 
     # Field overrides back to OPEN.
-    my $field_override = Proto3::Schema::Features->merge( $file_level, { enum_type => 'OPEN' } );
+    my $field_override = Protobuf::Schema::Features->merge( $file_level, { enum_type => 'OPEN' } );
     is( $field_override->enum_type, 'OPEN', 'field override beats parent' );
     is( $field_override->field_presence, 'EXPLICIT', 'other features still inherited' );
 }
@@ -60,28 +60,28 @@ use Proto3::Schema;
 # --- (c) proto3 schema resolves to today's presence/packed/open-enum --------
 {
     # Repeated packable scalar — packed by default under proto3.
-    my $rep = Proto3::Schema::Field->new(
+    my $rep = Protobuf::Schema::Field->new(
         name => 'nums', number => 1, type => 'int32', label => 'repeated',
     );
     # Singular scalar — implicit presence under proto3.
-    my $sing = Proto3::Schema::Field->new(
+    my $sing = Protobuf::Schema::Field->new(
         name => 'x', number => 2, type => 'int32',
     );
     # optional scalar — explicit presence under proto3.
-    my $opt = Proto3::Schema::Field->new(
+    my $opt = Protobuf::Schema::Field->new(
         name => 'y', number => 3, type => 'int32', label => 'optional',
     );
-    my $msg = Proto3::Schema::Message->new(
+    my $msg = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M', fields => [ $rep, $sing, $opt ],
     );
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name => 'E', full_name => 'pkg.E', values => [ { name => 'Z', number => 0 } ],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'a.proto', package => 'pkg', syntax => 'proto3',
         messages => [$msg], enums => [$enum],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
 
@@ -100,23 +100,23 @@ use Proto3::Schema;
 
 # --- (d) proto2 schema resolves to EXPLICIT/CLOSED/EXPANDED ------------------
 {
-    my $rep = Proto3::Schema::Field->new(
+    my $rep = Protobuf::Schema::Field->new(
         name => 'nums', number => 1, type => 'int32', label => 'repeated',
     );
-    my $sing = Proto3::Schema::Field->new(
+    my $sing = Protobuf::Schema::Field->new(
         name => 'x', number => 2, type => 'int32',
     );
-    my $msg = Proto3::Schema::Message->new(
+    my $msg = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'p2.M', fields => [ $rep, $sing ],
     );
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name => 'E', full_name => 'p2.E', values => [ { name => 'Z', number => 0 } ],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'b.proto', package => 'p2', syntax => 'proto2',
         messages => [$msg], enums => [$enum],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
 
@@ -133,23 +133,23 @@ use Proto3::Schema;
 
 # --- (e) edition 2023 resolves to EXPLICIT/OPEN/PACKED ----------------------
 {
-    my $rep = Proto3::Schema::Field->new(
+    my $rep = Protobuf::Schema::Field->new(
         name => 'nums', number => 1, type => 'int32', label => 'repeated',
     );
-    my $sing = Proto3::Schema::Field->new(
+    my $sing = Protobuf::Schema::Field->new(
         name => 'x', number => 2, type => 'int32',
     );
-    my $msg = Proto3::Schema::Message->new(
+    my $msg = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'e.M', fields => [ $rep, $sing ],
     );
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name => 'E', full_name => 'e.E', values => [ { name => 'Z', number => 0 } ],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'c.proto', package => 'e', edition => '2023',
         messages => [$msg], enums => [$enum],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
 
@@ -166,26 +166,26 @@ use Proto3::Schema;
 {
     # An edition-2023 file overriding enum_type=CLOSED at file level: a field
     # inherits CLOSED; a field with its own override of OPEN wins.
-    my $f_inherit = Proto3::Schema::Field->new(
+    my $f_inherit = Protobuf::Schema::Field->new(
         name => 'a', number => 1, type => 'enum', type_name => '.e.Color',
     );
-    my $f_override = Proto3::Schema::Field->new(
+    my $f_override = Protobuf::Schema::Field->new(
         name => 'b', number => 2, type => 'enum', type_name => '.e.Color',
         features => { enum_type => 'OPEN' },
     );
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name => 'Color', full_name => 'e.Color',
         values => [ { name => 'RED', number => 0 } ],
     );
-    my $msg = Proto3::Schema::Message->new(
+    my $msg = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'e.M', fields => [ $f_inherit, $f_override ],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'd.proto', package => 'e', edition => '2023',
         features => { enum_type => 'CLOSED' },
         messages => [$msg], enums => [$enum],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
 
@@ -195,14 +195,14 @@ use Proto3::Schema;
 
 # --- (g) resolution is idempotent -------------------------------------------
 {
-    my $sing = Proto3::Schema::Field->new( name => 'x', number => 1, type => 'int32' );
-    my $msg = Proto3::Schema::Message->new(
+    my $sing = Protobuf::Schema::Field->new( name => 'x', number => 1, type => 'int32' );
+    my $msg = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'i.M', fields => [$sing],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'e.proto', package => 'i', syntax => 'proto3', messages => [$msg],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
     my $first = $sing->features;
@@ -212,23 +212,23 @@ use Proto3::Schema;
 
 # --- (h) extension registry --------------------------------------------------
 {
-    my $ext = Proto3::Schema::Field->new(
+    my $ext = Protobuf::Schema::Field->new(
         name => 'my_ext', number => 100, type => 'int32',
         is_extension => 1, extendee => '.x.Base',
     );
-    my $base = Proto3::Schema::Message->new(
+    my $base = Protobuf::Schema::Message->new(
         name => 'Base', full_name => 'x.Base', fields => [],
         extension_ranges => [ [ 100, 200 ] ],
     );
-    my $holder = Proto3::Schema::Message->new(
+    my $holder = Protobuf::Schema::Message->new(
         name => 'Holder', full_name => 'x.Holder', fields => [],
         extensions => [$ext],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'f.proto', package => 'x', syntax => 'proto2',
         messages => [ $base, $holder ],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
 

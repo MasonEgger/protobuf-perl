@@ -5,12 +5,12 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Conformance;
+use Protobuf::Conformance;
 
 # The cached conformance codec must have unknown-field preservation enabled,
 # otherwise an unknown wire field (conformance UnknownVarint) is silently
 # dropped instead of echoed back.
-my $codec = Proto3::Conformance->codec;
+my $codec = Protobuf::Conformance->codec;
 ok(
     $codec->preserve_unknown_fields,
     'conformance codec preserves unknown fields'

@@ -6,35 +6,35 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Enum;
-use Proto3::Schema::Oneof;
-use Proto3::Codec;
-use Proto3::WKT::Struct;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Enum;
+use Protobuf::Schema::Oneof;
+use Protobuf::Codec;
+use Protobuf::WKT::Struct;
 
 # Build a codec over the given messages/enums and resolve it.
 my sub codec_for {
     my (%args) = @_;
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto', package => 'pkg',
         messages => $args{messages} // [],
         enums    => $args{enums}    // [],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # A message with one bytes field, for base64url decode tests.
 my sub bytes_codec {
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M',
-        fields => [ Proto3::Schema::Field->new(
+        fields => [ Protobuf::Schema::Field->new(
             name => 'data', json_name => 'data', number => 1, type => 'bytes',
         ) ],
     );
@@ -62,15 +62,15 @@ my sub bytes_codec {
 
 # --- Group 4: duplicate field rejection --------------------------------------
 {
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name => 'Inner', full_name => 'pkg.Inner',
-        fields => [ Proto3::Schema::Field->new(
+        fields => [ Protobuf::Schema::Field->new(
             name => 'a', json_name => 'a', number => 1, type => 'int32',
         ) ],
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M',
-        fields => [ Proto3::Schema::Field->new(
+        fields => [ Protobuf::Schema::Field->new(
             name => 'nested_msg', json_name => 'nestedMsg', number => 1,
             type => 'message', type_name => '.pkg.Inner',
         ) ],
@@ -101,15 +101,15 @@ my sub bytes_codec {
 
 # --- Group 5: null element in a repeated message field is rejected -----------
 {
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name => 'Inner', full_name => 'pkg.Inner',
-        fields => [ Proto3::Schema::Field->new(
+        fields => [ Protobuf::Schema::Field->new(
             name => 'a', json_name => 'a', number => 1, type => 'int32',
         ) ],
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M',
-        fields => [ Proto3::Schema::Field->new(
+        fields => [ Protobuf::Schema::Field->new(
             name => 'rep', json_name => 'rep', number => 1,
             label => 'repeated', type => 'message', type_name => '.pkg.Inner',
         ) ],
@@ -129,19 +129,19 @@ my sub bytes_codec {
 
 # --- Group 2: ignore unknown enum string values ------------------------------
 {
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name => 'E', full_name => 'pkg.E',
         values => [ { name => 'FOO', number => 0 }, { name => 'BAR', number => 1 } ],
     );
-    my $optional = Proto3::Schema::Field->new(
+    my $optional = Protobuf::Schema::Field->new(
         name => 'e', json_name => 'e', number => 1,
         type => 'enum', type_name => '.pkg.E',
     );
-    my $repeated = Proto3::Schema::Field->new(
+    my $repeated = Protobuf::Schema::Field->new(
         name => 'es', json_name => 'es', number => 2, label => 'repeated',
         type => 'enum', type_name => '.pkg.E',
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M', fields => [ $optional, $repeated ],
     );
     my $codec = codec_for( messages => [$m], enums => [$enum] );
@@ -170,25 +170,25 @@ my sub bytes_codec {
 {
     # Build a NullValue enum field; encode value 0 (NULL_VALUE) in a oneof
     # (explicit presence) must emit JSON null, not "NULL_VALUE".
-    my $null_enum = Proto3::WKT::NullValue->schema_enum;
-    my $field = Proto3::Schema::Field->new(
+    my $null_enum = Protobuf::WKT::NullValue->schema_enum;
+    my $field = Protobuf::Schema::Field->new(
         name => 'oneof_null', json_name => 'oneofNull', number => 1,
         type => 'enum', type_name => '.google.protobuf.NullValue',
         oneof_index => 0,
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M', fields => [$field],
-        oneofs => [ Proto3::Schema::Oneof->new(
+        oneofs => [ Protobuf::Schema::Oneof->new(
             name => 'kind', oneof_index => 0, fields => [$field] ) ],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'm.proto', package => 'pkg',
         messages => [$m], enums => [$null_enum],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $codec = Protobuf::Codec->new( schema => $schema );
 
     my $json = $codec->encode_json( 'pkg.M', { oneof_null => 0 } );
     like( $json, qr/"oneofNull":null/,

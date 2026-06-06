@@ -5,15 +5,15 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Enum;
-use Proto3::Schema::Features;
-use Proto3::Wire qw(encode_tag WIRE_VARINT WIRE_LEN);
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Enum;
+use Protobuf::Schema::Features;
+use Protobuf::Wire qw(encode_tag WIRE_VARINT WIRE_LEN);
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
@@ -21,7 +21,7 @@ use Proto3::Codec;
 # enum, mirroring what Schema->resolve does for a fully-built schema. Building
 # the FeatureSet by hand keeps the test independent of the FDS bootstrap.
 my sub install_features ($edition, $fields, $enums = []) {
-    my $features = Proto3::Schema::Features->for_edition($edition);
+    my $features = Protobuf::Schema::Features->for_edition($edition);
     $_->set_features($features) for @$fields;
     $_->set_features($features) for @$enums;
     return;
@@ -31,20 +31,20 @@ my sub install_features ($edition, $fields, $enums = []) {
 # ($codec, $full_name). preserve_unknown_fields is forwarded so closed-enum
 # routing can be observed as preserved bytes.
 my sub codec_for ($fields, %opts) {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => $fields,
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [$message],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
 
-    my $codec = Proto3::Codec->new( schema => $schema, %opts );
+    my $codec = Protobuf::Codec->new( schema => $schema, %opts );
     return ( $codec, 'pkg.M' );
 }
 
@@ -53,7 +53,7 @@ my sub codec_for ($fields, %opts) {
 #    IS emitted when set in the hashref, exactly like a proto3 `optional`.
 # ----------------------------------------------------------------------
 {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'f', number => 1, type => 'int32', label => 'singular',
     );
     install_features( 'proto2', [$f] );
@@ -74,7 +74,7 @@ my sub codec_for ($fields, %opts) {
 
 # Proto3 implicit-presence scalar at zero stays omitted (no regression).
 {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'f', number => 1, type => 'int32', label => 'singular',
     );
     install_features( 'proto3', [$f] );
@@ -93,7 +93,7 @@ my sub codec_for ($fields, %opts) {
 #    result hashref (no implicit default-fill); a proto3 implicit field fills.
 # ----------------------------------------------------------------------
 {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'f', number => 1, type => 'int32', label => 'singular',
     );
     install_features( 'proto2', [$f] );
@@ -112,7 +112,7 @@ my sub codec_for ($fields, %opts) {
 }
 
 {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'f', number => 1, type => 'int32', label => 'singular',
     );
     install_features( 'proto3', [$f] );
@@ -131,12 +131,12 @@ my sub codec_for ($fields, %opts) {
 #    round-trips on re-encode. Open enums keep the unknown value in-field.
 # ----------------------------------------------------------------------
 {
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name      => 'E',
         full_name => 'pkg.E',
         values    => [ { name => 'FOO', number => 0 }, { name => 'BAR', number => 1 } ],
     );
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'e', number => 1, type => 'enum', label => 'singular',
         type_name => '.pkg.E',
     );
@@ -170,12 +170,12 @@ my sub codec_for ($fields, %opts) {
 }
 
 {
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name      => 'E',
         full_name => 'pkg.E',
         values    => [ { name => 'FOO', number => 0 }, { name => 'BAR', number => 1 } ],
     );
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'e', number => 1, type => 'enum', label => 'singular',
         type_name => '.pkg.E',
     );
@@ -197,7 +197,7 @@ my sub codec_for ($fields, %opts) {
 #    tag per element); proto3 repeated scalar encodes PACKED (one LEN block).
 # ----------------------------------------------------------------------
 {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'r', number => 1, type => 'int32', label => 'repeated',
     );
     install_features( 'proto2', [$f] );
@@ -221,7 +221,7 @@ my sub codec_for ($fields, %opts) {
 }
 
 {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'r', number => 1, type => 'int32', label => 'repeated',
     );
     install_features( 'proto3', [$f] );
@@ -230,7 +230,7 @@ my sub codec_for ($fields, %opts) {
     my ( $codec, $full ) = codec_for( [$f] );
     my $packed =
           encode_tag( 1, WIRE_LEN )
-        . Proto3::Wire::encode_varint(2)
+        . Protobuf::Wire::encode_varint(2)
         . "\x01\x02";
     is(
         $codec->encode( $full, { r => [ 1, 2 ] } ),

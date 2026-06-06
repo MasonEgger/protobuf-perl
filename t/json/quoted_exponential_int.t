@@ -5,29 +5,29 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 my sub codec_for {
     my ($message) = @_;
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'm.proto', package => 'pkg', messages => [$message], enums => [],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 my sub int32_codec {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'pkg.M',
         fields => [
-            Proto3::Schema::Field->new( name => 'f', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'f', number => 1, type => 'int32' ),
         ],
     );
     return codec_for($message);

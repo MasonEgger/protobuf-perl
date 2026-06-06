@@ -5,40 +5,40 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Oneof;
-use Proto3::Codec;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Oneof;
+use Protobuf::Codec;
 
 my sub codec_for (@messages) {
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [@messages],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # pkg.Inner { int32 a = 1; int32 b = 2 }
 # pkg.Outer { Inner inner = 1 }
 my sub merge_messages () {
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name      => 'Inner',
         full_name => 'pkg.Inner',
         fields    => [
-            Proto3::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
-            Proto3::Schema::Field->new( name => 'b', number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'b', number => 2, type => 'int32' ),
         ],
     );
-    my $outer = Proto3::Schema::Message->new(
+    my $outer = Protobuf::Schema::Message->new(
         name      => 'Outer',
         full_name => 'pkg.Outer',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'inner', number => 1, type => 'message',
                 type_name => 'pkg.Inner',
             ),
@@ -75,27 +75,27 @@ my sub merge_messages () {
 # Nested submessages merge recursively across occurrences.
 {
     # pkg.Deep { int32 x = 1; int32 y = 2 }
-    my $deep = Proto3::Schema::Message->new(
+    my $deep = Protobuf::Schema::Message->new(
         name => 'Deep', full_name => 'pkg.Deep',
         fields => [
-            Proto3::Schema::Field->new( name => 'x', number => 1, type => 'int32' ),
-            Proto3::Schema::Field->new( name => 'y', number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'x', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'y', number => 2, type => 'int32' ),
         ],
     );
     # pkg.Mid { Deep deep = 1 }
-    my $mid = Proto3::Schema::Message->new(
+    my $mid = Protobuf::Schema::Message->new(
         name => 'Mid', full_name => 'pkg.Mid',
         fields => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'deep', number => 1, type => 'message', type_name => 'pkg.Deep',
             ),
         ],
     );
     # pkg.Top { Mid mid = 1 }
-    my $top = Proto3::Schema::Message->new(
+    my $top = Protobuf::Schema::Message->new(
         name => 'Top', full_name => 'pkg.Top',
         fields => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'mid', number => 1, type => 'message', type_name => 'pkg.Mid',
             ),
         ],
@@ -114,27 +114,27 @@ my sub merge_messages () {
 # A oneof message member also merges across repeated occurrences (last member
 # of the oneof still wins, but repeated occurrences of that member merge).
 {
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name      => 'Inner',
         full_name => 'pkg.Inner',
         fields    => [
-            Proto3::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
-            Proto3::Schema::Field->new( name => 'b', number => 2, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'a', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'b', number => 2, type => 'int32' ),
         ],
     );
-    my $msg_member = Proto3::Schema::Field->new(
+    my $msg_member = Protobuf::Schema::Field->new(
         name => 'inner', number => 1, type => 'message',
         type_name => 'pkg.Inner', oneof_index => 0,
     );
-    my $scalar_member = Proto3::Schema::Field->new(
+    my $scalar_member = Protobuf::Schema::Field->new(
         name => 'num', number => 2, type => 'int32', oneof_index => 0,
     );
-    my $outer = Proto3::Schema::Message->new(
+    my $outer = Protobuf::Schema::Message->new(
         name      => 'Outer',
         full_name => 'pkg.Outer',
         fields    => [ $msg_member, $scalar_member ],
         oneofs    => [
-            Proto3::Schema::Oneof->new(
+            Protobuf::Schema::Oneof->new(
                 name => 'choice', oneof_index => 0,
                 fields => [ $msg_member, $scalar_member ],
             ),

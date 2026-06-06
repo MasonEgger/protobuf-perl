@@ -1,4 +1,4 @@
-# ABOUTME: Tests for Proto3::Resolver — proto3 type-name scoping (spec §4.3).
+# ABOUTME: Tests for Protobuf::Resolver — proto3 type-name scoping (spec §4.3).
 # Covers fully-qualified vs relative lookup, innermost-first search order,
 # nested-message scope, and the ordered search_path on UnresolvedType.
 use v5.38;
@@ -7,11 +7,11 @@ use warnings;
 use utf8;
 use Test::More;
 
-use Proto3::Resolver;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Enum;
+use Protobuf::Resolver;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Enum;
 
 # Helper: build a Schema from a list of message full_names. Each message is
 # placed in a single file; package is irrelevant to the resolver (it indexes
@@ -20,15 +20,15 @@ sub schema_with_messages (@full_names) {
     my @messages = map {
         my $full = $_;
         my ($short) = $full =~ /([^.]+)$/;
-        Proto3::Schema::Message->new(
+        Protobuf::Schema::Message->new(
             name => $short, full_name => $full, fields => [],
         );
     } @full_names;
 
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'test.proto', package => '', messages => \@messages,
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     return $schema;
 }
@@ -38,7 +38,7 @@ sub schema_with_messages (@full_names) {
 # up exactly, from any package.
 {
     my $schema   = schema_with_messages('foo.bar.Baz');
-    my $resolver = Proto3::Resolver->new( schema => $schema );
+    my $resolver = Protobuf::Resolver->new( schema => $schema );
 
     my $ref = $resolver->resolve(
         type_name       => '.foo.bar.Baz',
@@ -54,7 +54,7 @@ sub schema_with_messages (@full_names) {
 # with coresdk.common.X defined, resolves to coresdk.common.X.
 {
     my $schema   = schema_with_messages('coresdk.common.X');
-    my $resolver = Proto3::Resolver->new( schema => $schema );
+    my $resolver = Protobuf::Resolver->new( schema => $schema );
 
     my $ref = $resolver->resolve(
         type_name       => 'common.X',
@@ -70,7 +70,7 @@ sub schema_with_messages (@full_names) {
 # root common.X.
 {
     my $schema   = schema_with_messages('common.X');
-    my $resolver = Proto3::Resolver->new( schema => $schema );
+    my $resolver = Protobuf::Resolver->new( schema => $schema );
 
     my $ref = $resolver->resolve(
         type_name       => 'common.X',
@@ -86,7 +86,7 @@ sub schema_with_messages (@full_names) {
 # innermost (coresdk.common.X) wins.
 {
     my $schema   = schema_with_messages( 'coresdk.common.X', 'common.X' );
-    my $resolver = Proto3::Resolver->new( schema => $schema );
+    my $resolver = Protobuf::Resolver->new( schema => $schema );
 
     my $ref = $resolver->resolve(
         type_name       => 'common.X',
@@ -102,7 +102,7 @@ sub schema_with_messages (@full_names) {
 # foo.Outer.Inner searches foo.Outer.Inner.Bar, foo.Outer.Bar, foo.Bar, Bar.
 {
     my $schema   = schema_with_messages('foo.Bar');
-    my $resolver = Proto3::Resolver->new( schema => $schema );
+    my $resolver = Protobuf::Resolver->new( schema => $schema );
 
     my $ref = $resolver->resolve(
         type_name       => 'Bar',
@@ -113,7 +113,7 @@ sub schema_with_messages (@full_names) {
         'nested-message search reaches foo.Bar (T-res-5)' );
 
     # The pure candidate-list helper must produce exactly the documented order.
-    my @candidates = Proto3::Resolver::candidate_names(
+    my @candidates = Protobuf::Resolver::candidate_names(
         'Bar', 'foo', 'foo.Outer.Inner',
     );
     is_deeply(
@@ -126,7 +126,7 @@ sub schema_with_messages (@full_names) {
 # candidate_names for a package-only scope (no current_message) walks the
 # package components outward then root.
 {
-    my @candidates = Proto3::Resolver::candidate_names(
+    my @candidates = Protobuf::Resolver::candidate_names(
         'common.X', 'foo.bar.baz', undef,
     );
     is_deeply(
@@ -143,7 +143,7 @@ sub schema_with_messages (@full_names) {
 
 # A fully-qualified name produces a single candidate (the stripped name).
 {
-    my @candidates = Proto3::Resolver::candidate_names(
+    my @candidates = Protobuf::Resolver::candidate_names(
         '.foo.bar.Baz', 'anything', 'anything.Msg',
     );
     is_deeply(
@@ -157,7 +157,7 @@ sub schema_with_messages (@full_names) {
 # search_path of exactly the fq names attempted, in order.
 {
     my $schema   = schema_with_messages('coresdk.common.X');
-    my $resolver = Proto3::Resolver->new( schema => $schema );
+    my $resolver = Protobuf::Resolver->new( schema => $schema );
 
     my $err = do {
         local $@;
@@ -172,7 +172,7 @@ sub schema_with_messages (@full_names) {
     };
 
     ok( $err, 'unresolvable type dies' );
-    isa_ok( $err, 'Proto3::Exception::Schema::UnresolvedType',
+    isa_ok( $err, 'Protobuf::Exception::Schema::UnresolvedType',
         'unresolvable type raises UnresolvedType (T-res-6)' );
     is( $err->name, 'common.Missing', 'exception carries the dangling name' );
     is( $err->current_package, 'coresdk.workflow_activation',
@@ -192,15 +192,15 @@ sub schema_with_messages (@full_names) {
 
 # Enums resolve through the same index as messages.
 {
-    my $color = Proto3::Schema::Enum->new(
+    my $color = Protobuf::Schema::Enum->new(
         name => 'Color', full_name => 'pkg.Color', values => [],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name => 'e.proto', package => 'pkg', enums => [$color],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    my $resolver = Proto3::Resolver->new( schema => $schema );
+    my $resolver = Protobuf::Resolver->new( schema => $schema );
 
     my $ref = $resolver->resolve(
         type_name       => 'Color',

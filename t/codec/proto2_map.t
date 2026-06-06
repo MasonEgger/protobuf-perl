@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for proto2/editions map-entry default-fill in Proto3::Codec.
+# ABOUTME: Unit tests for proto2/editions map-entry default-fill in Protobuf::Codec.
 # A MapEntry whose key/value tracks explicit presence (proto2) must STILL
 # default-fill its key and value to type-zero when omitted on the wire, never
 # leak a HASH ref or undef — a map entry conceptually always has both fields.
@@ -7,40 +7,40 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a codec over a one-file schema holding the given Schema::Message list.
 my sub codec_for (@messages) {
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [@messages],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # A synthetic MapEntry whose key (field 1) and value (field 2) BOTH declare
 # explicit presence (label 'optional') — exactly the proto2/editions entry
 # shape where an omitted key/value must default rather than stay absent.
 my sub explicit_map_entry ($full_name, $key_type, $value_type) {
-    return Proto3::Schema::Message->new(
+    return Protobuf::Schema::Message->new(
         name         => ( split /\./, $full_name )[-1],
         full_name    => $full_name,
         is_map_entry => 1,
         fields       => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name  => 'key', number => 1,
                 type  => $key_type, label => 'optional',
             ),
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name  => 'value', number => 2,
                 type  => $value_type, label => 'optional',
             ),
@@ -50,7 +50,7 @@ my sub explicit_map_entry ($full_name, $key_type, $value_type) {
 
 # A map field 'm' (number 1) over the given MapEntry.
 my sub map_field ($entry_full_name) {
-    return Proto3::Schema::Field->new(
+    return Protobuf::Schema::Field->new(
         name      => 'm',
         number    => 1,
         type      => 'message',
@@ -62,7 +62,7 @@ my sub map_field ($entry_full_name) {
 
 # A message pkg.M with one map field 'm'.
 my sub map_holder ($entry_full_name) {
-    return Proto3::Schema::Message->new(
+    return Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [ map_field($entry_full_name) ],

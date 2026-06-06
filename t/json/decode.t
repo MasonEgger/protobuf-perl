@@ -1,4 +1,4 @@
-# ABOUTME: Proto3::JSON decode tests (Step 29) — lenient proto3 JSON input:
+# ABOUTME: Protobuf::JSON decode tests (Step 29) — lenient proto3 JSON input:
 # scalar round-trip, 64-bit from string AND number, enum from name AND number,
 # camelCase + snake_case keys, unknown-field skip/reject, error types, WKT
 # delegation (spec §4.9, T-json-1/2/3).
@@ -7,34 +7,34 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Enum;
-use Proto3::Codec;
-use Proto3::WKT;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Enum;
+use Protobuf::Codec;
+use Protobuf::WKT;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a codec over a one-file schema holding the given Schema elements.
 my sub codec_for {
     my (%args) = @_;
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => $args{messages} // [],
         enums    => $args{enums}    // [],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 my sub scalar_field ( $name, $number, $type, %extra ) {
-    return Proto3::Schema::Field->new(
+    return Protobuf::Schema::Field->new(
         name => $name, number => $number, type => $type, %extra,
     );
 }
@@ -42,7 +42,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.1: all scalar types round-trip (T-json-1) -----------------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Scalars',
         full_name => 'pkg.Scalars',
         fields    => [
@@ -91,7 +91,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.2: int64 decodes from BOTH a string AND a number (T-json-2 dec) --
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Wide',
         full_name => 'pkg.Wide',
         fields    => [ scalar_field( 'i64', 1, 'int64' ) ],
@@ -108,7 +108,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.3: enum decodes from BOTH a name AND a number (T-json-3 dec) -----
 
 {
-    my $enum = Proto3::Schema::Enum->new(
+    my $enum = Protobuf::Schema::Enum->new(
         name      => 'Color',
         full_name => 'pkg.Color',
         values    => [
@@ -117,11 +117,11 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
             { name => 'BLUE',  number => 2 },
         ],
     );
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Painted',
         full_name => 'pkg.Painted',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'color', number => 1, type => 'enum',
                 type_name => 'pkg.Color',
             ),
@@ -143,7 +143,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.4: accept BOTH camelCase AND snake_case field names --------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Named',
         full_name => 'pkg.Named',
         fields    => [
@@ -167,7 +167,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.5: unknown field skipped by default; reject_unknown_fields raises -
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Small',
         full_name => 'pkg.Small',
         fields    => [ scalar_field( 'n', 1, 'int32' ) ],
@@ -194,7 +194,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.6: error types ---------------------------------------------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Small',
         full_name => 'pkg.Small',
         fields    => [ scalar_field( 'n', 1, 'int32' ) ],
@@ -205,39 +205,39 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
     my $parse_err;
     eval { $codec->decode_json( 'pkg.Small', '{not valid json' ); 1 }
         or $parse_err = $@;
-    isa_ok( $parse_err, 'Proto3::Exception::JSON::Parse',
+    isa_ok( $parse_err, 'Protobuf::Exception::JSON::Parse',
         '29.6: malformed JSON raises JSON::Parse' );
 
     # A string in an int field -> TypeMismatch.
     my $tm_err;
     eval { $codec->decode_json( 'pkg.Small', '{"n":"notanumber"}' ); 1 }
         or $tm_err = $@;
-    isa_ok( $tm_err, 'Proto3::Exception::Codec::TypeMismatch',
+    isa_ok( $tm_err, 'Protobuf::Exception::Codec::TypeMismatch',
         '29.6: string in an int field raises TypeMismatch' );
 }
 
 # --- 29.6b: malformed WKT string form -> JSON::WKT ----------------------
 
 {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
+    my $codec = Protobuf::Codec->new( schema => $schema );
 
     my $wkt_err;
     eval {
         $codec->decode_json( 'google.protobuf.Timestamp', '"not-a-timestamp"' );
         1;
     } or $wkt_err = $@;
-    isa_ok( $wkt_err, 'Proto3::Exception::JSON::WKT',
+    isa_ok( $wkt_err, 'Protobuf::Exception::JSON::WKT',
         '29.6: malformed RFC3339 raises JSON::WKT' );
 }
 
 # --- 29.8: WKT from_json_value delegation round-trips -------------------
 
 {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
+    my $codec = Protobuf::Codec->new( schema => $schema );
 
     # Timestamp from its RFC3339 special form -> { seconds, nanos }.
     my $ts = $codec->decode_json(
@@ -254,17 +254,17 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.8b: a WKT-typed field on a normal message delegates -------------
 
 {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
-    my $outer = Proto3::Schema::File->new(
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
+    my $outer = Protobuf::Schema::File->new(
         name     => 'outer.proto',
         package  => 'pkg',
         messages => [
-            Proto3::Schema::Message->new(
+            Protobuf::Schema::Message->new(
                 name      => 'Event',
                 full_name => 'pkg.Event',
                 fields    => [
-                    Proto3::Schema::Field->new(
+                    Protobuf::Schema::Field->new(
                         name      => 'at',
                         number    => 1,
                         type      => 'message',
@@ -276,7 +276,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
     );
     $schema->add_file($outer);
     $schema->resolve;
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $codec = Protobuf::Codec->new( schema => $schema );
 
     my $decoded = $codec->decode_json(
         'pkg.Event', '{"at":"2023-11-14T22:13:20.789Z"}' );
@@ -287,7 +287,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.8c: maps decode from JSON objects -------------------------------
 
 {
-    my $entry = Proto3::Schema::Message->new(
+    my $entry = Protobuf::Schema::Message->new(
         name         => 'AttrsEntry',
         full_name    => 'pkg.Mapped.AttrsEntry',
         is_map_entry => 1,
@@ -296,11 +296,11 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
             scalar_field( 'value', 2, 'int32' ),
         ],
     );
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Mapped',
         full_name => 'pkg.Mapped',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name      => 'attrs',
                 number    => 1,
                 type      => 'message',
@@ -321,7 +321,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # --- 29.8d: repeated fields decode from JSON arrays ---------------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Listy',
         full_name => 'pkg.Listy',
         fields    => [

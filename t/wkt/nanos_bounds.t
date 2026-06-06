@@ -5,15 +5,15 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::WKT::Timestamp;
-use Proto3::WKT::Duration;
+use Protobuf::Exception;
+use Protobuf::WKT::Timestamp;
+use Protobuf::WKT::Duration;
 
 # --- Timestamp: nanos must be 0 .. 999999999 ----------------------------
 
 # A valid in-range nanos still serializes.
 {
-    my $json = Proto3::WKT::Timestamp->to_json_value(
+    my $json = Protobuf::WKT::Timestamp->to_json_value(
         { seconds => 10000, nanos => 500_000_000 } );
     like( $json, qr/\.500Z\z/, 'Timestamp with valid nanos serializes' );
 }
@@ -21,30 +21,30 @@ use Proto3::WKT::Duration;
 # A negative nanos (conformance TimestampProtoNegativeNanos) is rejected.
 {
     my $ok = eval {
-        Proto3::WKT::Timestamp->to_json_value(
+        Protobuf::WKT::Timestamp->to_json_value(
             { seconds => 5000, nanos => -1 } );
         1;
     };
     ok( !$ok, 'Timestamp negative nanos is rejected' );
-    isa_ok( $@, 'Proto3::Exception::JSON::WKT', 'throws JSON::WKT' );
+    isa_ok( $@, 'Protobuf::Exception::JSON::WKT', 'throws JSON::WKT' );
 }
 
 # A nanos above 999999999 (conformance TimestampProtoNanoTooLarge) is rejected.
 {
     my $ok = eval {
-        Proto3::WKT::Timestamp->to_json_value(
+        Protobuf::WKT::Timestamp->to_json_value(
             { seconds => 5000, nanos => 1_000_000_000 } );
         1;
     };
     ok( !$ok, 'Timestamp nanos too large is rejected' );
-    isa_ok( $@, 'Proto3::Exception::JSON::WKT', 'throws JSON::WKT' );
+    isa_ok( $@, 'Protobuf::Exception::JSON::WKT', 'throws JSON::WKT' );
 }
 
 # --- Duration: |nanos| <= 999999999 and sign matches seconds ------------
 
 # A valid same-sign nanos still serializes.
 {
-    my $json = Proto3::WKT::Duration->to_json_value(
+    my $json = Protobuf::WKT::Duration->to_json_value(
         { seconds => 1, nanos => 500_000_000 } );
     is( $json, '1.500s', 'Duration with valid nanos serializes' );
 }
@@ -58,9 +58,9 @@ use Proto3::WKT::Duration;
       )
     {
         my ( $value, $label ) = @$case;
-        my $ok = eval { Proto3::WKT::Duration->to_json_value($value); 1 };
+        my $ok = eval { Protobuf::WKT::Duration->to_json_value($value); 1 };
         ok( !$ok, "Duration $label is rejected" );
-        isa_ok( $@, 'Proto3::Exception::JSON::WKT', "$label throws JSON::WKT" );
+        isa_ok( $@, 'Protobuf::Exception::JSON::WKT', "$label throws JSON::WKT" );
     }
 }
 
@@ -73,15 +73,15 @@ use Proto3::WKT::Duration;
       )
     {
         my ( $value, $label ) = @$case;
-        my $ok = eval { Proto3::WKT::Duration->to_json_value($value); 1 };
+        my $ok = eval { Protobuf::WKT::Duration->to_json_value($value); 1 };
         ok( !$ok, "Duration $label is rejected" );
-        isa_ok( $@, 'Proto3::Exception::JSON::WKT', "$label throws JSON::WKT" );
+        isa_ok( $@, 'Protobuf::Exception::JSON::WKT', "$label throws JSON::WKT" );
     }
 }
 
 # seconds == 0 allows nanos of either sign (no sign-mismatch error).
 {
-    my $json = Proto3::WKT::Duration->to_json_value(
+    my $json = Protobuf::WKT::Duration->to_json_value(
         { seconds => 0, nanos => -500_000_000 } );
     is( $json, '-0.500s', 'Duration with zero seconds allows negative nanos' );
 }

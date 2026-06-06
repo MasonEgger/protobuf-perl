@@ -6,44 +6,44 @@ use Test::More;
 use lib 'lib';
 use JSON::PP ();
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Codec;
-use Proto3::WKT;
-use Proto3::WKT::Struct;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Codec;
+use Protobuf::WKT;
+use Protobuf::WKT::Struct;
 
 # A codec over the registered WKT schemas, for binary round-trips.
 my sub wkt_codec {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
     $schema->resolve if $schema->can('resolve');
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # --- Value: each JSON kind maps to the right oneof member ----------------
 
 {
     # to_json_value takes the message shape (one oneof key) and yields raw JSON.
-    is( Proto3::WKT::Value->to_json_value( { number_value => 5 } ), 5,
+    is( Protobuf::WKT::Value->to_json_value( { number_value => 5 } ), 5,
         'Value number_value -> 5' );
-    is( Proto3::WKT::Value->to_json_value( { string_value => 'hi' } ), 'hi',
+    is( Protobuf::WKT::Value->to_json_value( { string_value => 'hi' } ), 'hi',
         'Value string_value -> "hi"' );
-    is( Proto3::WKT::Value->to_json_value( { null_value => 0 } ), undef,
+    is( Protobuf::WKT::Value->to_json_value( { null_value => 0 } ), undef,
         'Value null_value -> null' );
 
-    my $b = Proto3::WKT::Value->to_json_value( { bool_value => 1 } );
+    my $b = Protobuf::WKT::Value->to_json_value( { bool_value => 1 } );
     ok( JSON::PP::is_bool($b) && $b, 'Value bool_value true -> JSON true' );
-    my $bf = Proto3::WKT::Value->to_json_value( { bool_value => 0 } );
+    my $bf = Protobuf::WKT::Value->to_json_value( { bool_value => 0 } );
     ok( JSON::PP::is_bool($bf) && !$bf, 'Value bool_value false -> JSON false' );
 
     is_deeply(
-        Proto3::WKT::Value->to_json_value(
+        Protobuf::WKT::Value->to_json_value(
             { struct_value => { fields => { a => { number_value => 1 } } } } ),
         { a => 1 },
         'Value struct_value -> JSON object',
     );
     is_deeply(
-        Proto3::WKT::Value->to_json_value(
+        Protobuf::WKT::Value->to_json_value(
             { list_value => { values => [ { number_value => 1 },
                         { string_value => 'x' } ] } } ),
         [ 1, 'x' ],
@@ -54,25 +54,25 @@ my sub wkt_codec {
 # --- Value: from_json_value classifies an arbitrary JSON value -----------
 
 {
-    is_deeply( Proto3::WKT::Value->from_json_value(undef),
+    is_deeply( Protobuf::WKT::Value->from_json_value(undef),
         { null_value => 0 }, 'null -> null_value' );
-    is_deeply( Proto3::WKT::Value->from_json_value(5),
+    is_deeply( Protobuf::WKT::Value->from_json_value(5),
         { number_value => 5 }, 'integer -> number_value' );
-    is_deeply( Proto3::WKT::Value->from_json_value(1.5),
+    is_deeply( Protobuf::WKT::Value->from_json_value(1.5),
         { number_value => 1.5 }, 'float -> number_value' );
-    is_deeply( Proto3::WKT::Value->from_json_value('hello'),
+    is_deeply( Protobuf::WKT::Value->from_json_value('hello'),
         { string_value => 'hello' }, 'string -> string_value' );
-    is_deeply( Proto3::WKT::Value->from_json_value( JSON::PP::true ),
+    is_deeply( Protobuf::WKT::Value->from_json_value( JSON::PP::true ),
         { bool_value => 1 }, 'true -> bool_value 1' );
-    is_deeply( Proto3::WKT::Value->from_json_value( JSON::PP::false ),
+    is_deeply( Protobuf::WKT::Value->from_json_value( JSON::PP::false ),
         { bool_value => 0 }, 'false -> bool_value 0' );
     is_deeply(
-        Proto3::WKT::Value->from_json_value( { foo => 1 } ),
+        Protobuf::WKT::Value->from_json_value( { foo => 1 } ),
         { struct_value => { fields => { foo => { number_value => 1 } } } },
         'object -> struct_value',
     );
     is_deeply(
-        Proto3::WKT::Value->from_json_value( [ 0, 'hello' ] ),
+        Protobuf::WKT::Value->from_json_value( [ 0, 'hello' ] ),
         { list_value => { values =>
                     [ { number_value => 0 }, { string_value => 'hello' } ] } },
         'array -> list_value',
@@ -93,7 +93,7 @@ my sub wkt_codec {
         },
     };
 
-    my $json = Proto3::WKT::Struct->to_json_value($shape);
+    my $json = Protobuf::WKT::Struct->to_json_value($shape);
     is( $json->{greeting}, 'hi', 'Struct field string' );
     is( $json->{n},        3,    'Struct field number' );
     ok( JSON::PP::is_bool( $json->{flag} ) && $json->{flag},
@@ -101,7 +101,7 @@ my sub wkt_codec {
     is( $json->{nada}, undef, 'Struct field null' );
     is_deeply( $json->{nested}, { k => 'v' }, 'Struct nested object' );
 
-    my $back = Proto3::WKT::Struct->from_json_value(
+    my $back = Protobuf::WKT::Struct->from_json_value(
         { greeting => 'hi', n => 3, nested => { k => 'v' } } );
     is_deeply(
         $back,
@@ -115,9 +115,9 @@ my sub wkt_codec {
     );
 
     # Empty object <-> empty Struct.
-    is_deeply( Proto3::WKT::Struct->to_json_value( { fields => {} } ), {},
+    is_deeply( Protobuf::WKT::Struct->to_json_value( { fields => {} } ), {},
         'empty Struct -> {}' );
-    is_deeply( Proto3::WKT::Struct->from_json_value( {} ), { fields => {} },
+    is_deeply( Protobuf::WKT::Struct->from_json_value( {} ), { fields => {} },
         '{} -> empty Struct' );
 }
 
@@ -125,7 +125,7 @@ my sub wkt_codec {
 
 {
     # {"listValue": []} -> a Struct whose "listValue" key is an empty ListValue.
-    my $back = Proto3::WKT::Struct->from_json_value( { listValue => [] } );
+    my $back = Protobuf::WKT::Struct->from_json_value( { listValue => [] } );
     is_deeply(
         $back,
         { fields => { listValue => { list_value => { values => [] } } } },
@@ -139,11 +139,11 @@ my sub wkt_codec {
     my $shape = { values =>
             [ { number_value => 1 }, { string_value => 'x' },
             { null_value => 0 } ] };
-    is_deeply( Proto3::WKT::ListValue->to_json_value($shape),
+    is_deeply( Protobuf::WKT::ListValue->to_json_value($shape),
         [ 1, 'x', undef ], 'ListValue -> JSON array' );
 
     is_deeply(
-        Proto3::WKT::ListValue->from_json_value( [ 1, 'x', undef ] ),
+        Protobuf::WKT::ListValue->from_json_value( [ 1, 'x', undef ] ),
         { values =>
                 [ { number_value => 1 }, { string_value => 'x' },
                 { null_value => 0 } ] },
@@ -151,17 +151,17 @@ my sub wkt_codec {
     );
 
     # Empty array <-> empty ListValue.
-    is_deeply( Proto3::WKT::ListValue->to_json_value( { values => [] } ), [],
+    is_deeply( Protobuf::WKT::ListValue->to_json_value( { values => [] } ), [],
         'empty ListValue -> []' );
-    is_deeply( Proto3::WKT::ListValue->from_json_value( [] ), { values => [] },
+    is_deeply( Protobuf::WKT::ListValue->from_json_value( [] ), { values => [] },
         '[] -> empty ListValue' );
 }
 
 # --- NullValue stays an enum number 0 <-> null ---------------------------
 
 {
-    is( Proto3::WKT::NullValue->to_json_value(0), undef, 'NullValue -> null' );
-    is( Proto3::WKT::NullValue->from_json_value(undef), 0, 'null -> NullValue' );
+    is( Protobuf::WKT::NullValue->to_json_value(0), undef, 'NullValue -> null' );
+    is( Protobuf::WKT::NullValue->from_json_value(undef), 0, 'null -> NullValue' );
 }
 
 # --- Full binary round-trip through the codec (proves shape contract) ----
@@ -179,10 +179,10 @@ my sub wkt_codec {
         )
     {
         my ( $label, $json, undef ) = @$kind;
-        my $shape = Proto3::WKT::Value->from_json_value($json);
+        my $shape = Protobuf::WKT::Value->from_json_value($json);
         my $bytes = $codec->encode( 'google.protobuf.Value', $shape );
         my $back  = $codec->decode( 'google.protobuf.Value', $bytes );
-        is_deeply( Proto3::WKT::Value->to_json_value($back), $json,
+        is_deeply( Protobuf::WKT::Value->to_json_value($back), $json,
             "Value $label survives binary round-trip" );
     }
 }
@@ -190,16 +190,16 @@ my sub wkt_codec {
 # --- The facade still registers the family -------------------------------
 
 {
-    my $schema = Proto3::Schema->new;
-    Proto3::WKT->register($schema);
-    is( Proto3::WKT->json_handler('google.protobuf.Struct'),
-        'Proto3::WKT::Struct', 'Struct handler registered' );
-    is( Proto3::WKT->json_handler('google.protobuf.Value'),
-        'Proto3::WKT::Value', 'Value handler registered' );
-    is( Proto3::WKT->json_handler('google.protobuf.ListValue'),
-        'Proto3::WKT::ListValue', 'ListValue handler registered' );
-    is( Proto3::WKT->json_handler('google.protobuf.NullValue'),
-        'Proto3::WKT::NullValue', 'NullValue handler registered' );
+    my $schema = Protobuf::Schema->new;
+    Protobuf::WKT->register($schema);
+    is( Protobuf::WKT->json_handler('google.protobuf.Struct'),
+        'Protobuf::WKT::Struct', 'Struct handler registered' );
+    is( Protobuf::WKT->json_handler('google.protobuf.Value'),
+        'Protobuf::WKT::Value', 'Value handler registered' );
+    is( Protobuf::WKT->json_handler('google.protobuf.ListValue'),
+        'Protobuf::WKT::ListValue', 'ListValue handler registered' );
+    is( Protobuf::WKT->json_handler('google.protobuf.NullValue'),
+        'Protobuf::WKT::NullValue', 'NullValue handler registered' );
 }
 
 done_testing;

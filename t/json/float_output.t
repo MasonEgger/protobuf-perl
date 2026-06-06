@@ -5,35 +5,35 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
-use Proto3::JSON;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
+use Protobuf::JSON;
 
 sub json_for ($type) {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'd', json_name => 'd', number => 1,
         label => 'singular', type => $type,
     );
-    my $r = Proto3::Schema::Field->new(
+    my $r = Protobuf::Schema::Field->new(
         name => 'r', json_name => 'r', number => 2,
         label => 'repeated', type => $type,
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'M', fields => [ $f, $r ],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file(
-        Proto3::Schema::File->new(
+        Protobuf::Schema::File->new(
             name => 'x.proto', package => '',
             messages => [$m], enums => [], services => [], imports => [],
         )
     );
     $schema->resolve;
-    my $codec = Proto3::Codec->new( schema => $schema );
-    return Proto3::JSON->new( codec => $codec, schema => $schema );
+    my $codec = Protobuf::Codec->new( schema => $schema );
+    return Protobuf::JSON->new( codec => $codec, schema => $schema );
 }
 
 my $INF  = 9**9**9;

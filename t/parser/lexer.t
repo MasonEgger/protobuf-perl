@@ -1,4 +1,4 @@
-# ABOUTME: Tests for Proto3::Parser::Lexer — the .proto tokenizer (spec §4.4).
+# ABOUTME: Tests for Protobuf::Parser::Lexer — the .proto tokenizer (spec §4.4).
 # Covers token kinds, string escapes, keyword vs identifier, punctuation,
 # comment discarding, line/col positions, and unterminated-input errors.
 use v5.38;
@@ -7,13 +7,13 @@ use warnings;
 use utf8;
 use Test::More;
 
-use Proto3::Parser::Lexer;
-use Proto3::Exception;
+use Protobuf::Parser::Lexer;
+use Protobuf::Exception;
 
 # Helper: tokenize source and return the arrayref of token hashes. Each token is
 # { type => ..., value => ..., line => ..., col => ... }.
 sub lex ($src) {
-    return Proto3::Parser::Lexer->new( source => $src )->tokenize;
+    return Protobuf::Parser::Lexer->new( source => $src )->tokenize;
 }
 
 # Helper: tokens reduced to [type, value] pairs, dropping positions, for compact
@@ -144,7 +144,7 @@ subtest 'unterminated string raises Parser with position' => sub {
     my $err;
     eval { lex(qq{"never closed}); 1 } or $err = $@;
     ok $err, 'died on unterminated string';
-    isa_ok $err, 'Proto3::Exception::Parser', 'typed parser error';
+    isa_ok $err, 'Protobuf::Exception::Parser', 'typed parser error';
     is $err->line, 1, 'error carries line';
     ok defined $err->column, 'error carries column';
 };
@@ -153,7 +153,7 @@ subtest 'unterminated block comment raises Parser with position' => sub {
     my $err;
     eval { lex("foo /* never closed"); 1 } or $err = $@;
     ok $err, 'died on unterminated block comment';
-    isa_ok $err, 'Proto3::Exception::Parser', 'typed parser error';
+    isa_ok $err, 'Protobuf::Exception::Parser', 'typed parser error';
     is $err->line, 1, 'error carries line';
     ok defined $err->column, 'error carries column';
 };

@@ -25,8 +25,8 @@ plan skip_all =>
 plan skip_all => "SDK_CORE_PROTO_PATH does not exist: $root"
     unless -d $root;
 
-require Proto3::Parser;
-require Proto3::Codec;
+require Protobuf::Parser;
+require Protobuf::Codec;
 
 # The two entry-point messages spec §5.2 names as the proof-of-purpose targets,
 # each paired with the .proto file (relative to the include root) that defines
@@ -45,8 +45,8 @@ my %TARGET = (
 # ----------------------------------------------------------------------
 # One parser so the import cache deduplicates the diamond between the two entry
 # points; collect every reachable file into a single schema.
-my $parser = Proto3::Parser->new( include_paths => [$root] );
-my $schema = Proto3::Schema->new;
+my $parser = Protobuf::Parser->new( include_paths => [$root] );
+my $schema = Protobuf::Schema->new;
 for my $full_name ( sort keys %TARGET ) {
     my $sub = $parser->parse_with_imports( $TARGET{$full_name} );
     $schema->add_file($_)
@@ -76,7 +76,7 @@ is_deeply( \@unresolved, [], '33.2: no UnresolvedType remains after resolve' )
 # 33.3: round-trip the two entry-point messages through the codec, and (if
 # protoc is present) cross-check one against protoc's wire output.
 # ----------------------------------------------------------------------
-my $codec = Proto3::Codec->new( schema => $schema );
+my $codec = Protobuf::Codec->new( schema => $schema );
 
 for my $full_name ( sort keys %TARGET ) {
     ok( $schema->message($full_name), "33.3: $full_name is in the schema" );

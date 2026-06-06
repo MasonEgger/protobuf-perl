@@ -4,9 +4,9 @@ use strict;
 use warnings;
 use Test::More;
 
-use_ok('Proto3') or BAIL_OUT('Proto3 failed to load');
+use_ok('Protobuf') or BAIL_OUT('Protobuf failed to load');
 
-ok( defined $Proto3::VERSION, '$Proto3::VERSION is defined' );
-ok( length "$Proto3::VERSION", '$Proto3::VERSION is non-empty' );
+ok( defined $Protobuf::VERSION, '$Protobuf::VERSION is defined' );
+ok( length "$Protobuf::VERSION", '$Protobuf::VERSION is non-empty' );
 
 done_testing;

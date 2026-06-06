@@ -1,40 +1,40 @@
-# ABOUTME: Unit tests for Proto3::Codec decode of singular scalar fields.
+# ABOUTME: Unit tests for Protobuf::Codec decode of singular scalar fields.
 # Covers known-field decode, round-trip, defaults, unknown-field skip, last-wins, errors.
 use v5.38;
 use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Wire qw(encode_tag WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32);
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Wire qw(encode_tag WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32);
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a one-message schema with the given fields and return ($codec, $full).
 my sub schema_with_message (@field_specs) {
-    my @fields = map { Proto3::Schema::Field->new(%$_) } @field_specs;
+    my @fields = map { Protobuf::Schema::Field->new(%$_) } @field_specs;
 
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => \@fields,
     );
 
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [$message],
     );
 
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
 
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $codec = Protobuf::Codec->new( schema => $schema );
     return ( $codec, 'pkg.M' );
 }
 
@@ -224,7 +224,7 @@ for my $case (@round_trip_cases) {
     my $err;
     eval { $codec->decode( $full, "\x0b" ); 1 } or $err = $@;
     ok( $err, '11.6: unterminated group dies' );
-    isa_ok( $err, 'Proto3::Exception::Wire',
+    isa_ok( $err, 'Protobuf::Exception::Wire',
         '11.6: unterminated group -> Wire error' );
 }
 
@@ -237,7 +237,7 @@ for my $case (@round_trip_cases) {
     my $err;
     eval { $codec->decode( $full, $bytes ); 1 } or $err = $@;
     ok( $err, '11.7: truncated input dies' );
-    isa_ok( $err, 'Proto3::Exception::Wire::Truncated',
+    isa_ok( $err, 'Protobuf::Exception::Wire::Truncated',
         '11.7: truncated -> Wire::Truncated propagates' );
 }
 
@@ -248,7 +248,7 @@ for my $case (@round_trip_cases) {
     my $err;
     eval { $codec->decode( 'pkg.Nope', '' ); 1 } or $err = $@;
     ok( $err, 'decode of unknown type dies' );
-    isa_ok( $err, 'Proto3::Exception::Codec::UnknownType',
+    isa_ok( $err, 'Protobuf::Exception::Codec::UnknownType',
         'unknown type on decode -> UnknownType' );
 }
 

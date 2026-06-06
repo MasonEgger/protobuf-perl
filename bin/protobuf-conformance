@@ -1,0 +1,36 @@
+#!/usr/bin/env perl
+# ABOUTME: Conformance testee executable — the stdin/stdout program Google's
+# conformance_test_runner drives; all logic lives in Protobuf::Conformance.
+use v5.38;
+use warnings;
+
+use Protobuf::Conformance;
+
+Protobuf::Conformance::run_stdio( \*STDIN, \*STDOUT );
+
+__END__
+
+=head1 NAME
+
+protobuf-conformance - the proto3 conformance testee
+
+=head1 SYNOPSIS
+
+    conformance_test_runner --enforce_recommended ./protobuf-conformance
+
+Run by Google's C<conformance_test_runner> as a sub-process. It reads
+length-delimited C<conformance.ConformanceRequest> messages from stdin and
+writes C<conformance.ConformanceResponse> messages to stdout, framed by a 4-byte
+little-endian length prefix, looping until EOF.
+
+=head1 DESCRIPTION
+
+This program is a thin wrapper over L<Protobuf::Conformance/run_stdio> — all
+request-handling logic lives in L<Protobuf::Conformance> (spec §4.11) so it is unit
+testable without the external runner.
+
+=head1 LICENSE
+
+This software is licensed under the MIT license. See the C<LICENSE> file.
+
+=cut

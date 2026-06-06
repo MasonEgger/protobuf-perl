@@ -7,30 +7,30 @@ use Test::More;
 use lib 'lib';
 use Encode ();
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 # Build a one-field message of the given proto type, return a ready codec + name.
 sub codec_for ($type) {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'f', json_name => 'f', number => 1,
         label => 'singular', type => $type,
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'M', fields => [$f],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file(
-        Proto3::Schema::File->new(
+        Protobuf::Schema::File->new(
             name => 'x.proto', package => '',
             messages => [$m], enums => [], services => [], imports => [],
         )
     );
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # "café" — the é is U+00E9, which is two bytes (c3 a9) in UTF-8.

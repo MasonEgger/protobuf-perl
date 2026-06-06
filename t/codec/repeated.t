@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for Proto3::Codec encode/decode of repeated fields.
+# ABOUTME: Unit tests for Protobuf::Codec encode/decode of repeated fields.
 # Covers packed-by-default scalars, one-entry-per-element messages, empty-omit,
 # and lenient decode of BOTH packed and unpacked forms (T-codec-5).
 use v5.38;
@@ -6,32 +6,32 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Wire qw(encode_tag WIRE_VARINT WIRE_LEN);
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Wire qw(encode_tag WIRE_VARINT WIRE_LEN);
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a schema from a list of Schema::Message instances and return the codec.
 my sub codec_for (@messages) {
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [@messages],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # A one-message schema with the given fields; returns ($codec, $full_name).
 my sub schema_with_message (@field_specs) {
-    my @fields = map { Proto3::Schema::Field->new(%$_) } @field_specs;
-    my $message = Proto3::Schema::Message->new(
+    my @fields = map { Protobuf::Schema::Field->new(%$_) } @field_specs;
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => \@fields,
@@ -116,21 +116,21 @@ my sub repeated_field (%overrides) {
 
 {
     # Inner message: int32 v = 1.
-    my $inner = Proto3::Schema::Message->new(
+    my $inner = Protobuf::Schema::Message->new(
         name      => 'Inner',
         full_name => 'pkg.Inner',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'v', number => 1, type => 'int32',
             ),
         ],
     );
     # Outer message: repeated Inner f = 1.
-    my $outer = Proto3::Schema::Message->new(
+    my $outer = Protobuf::Schema::Message->new(
         name      => 'Outer',
         full_name => 'pkg.Outer',
         fields    => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name      => 'f',
                 number    => 1,
                 type      => 'message',

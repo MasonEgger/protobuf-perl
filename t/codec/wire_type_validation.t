@@ -5,30 +5,30 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 my sub codec_for () {
-    my $f = Proto3::Schema::Field->new(
+    my $f = Protobuf::Schema::Field->new(
         name => 'f', json_name => 'f', number => 1,
         label => 'singular', type => 'int32',
     );
-    my $m = Proto3::Schema::Message->new(
+    my $m = Protobuf::Schema::Message->new(
         name => 'M', full_name => 'M', fields => [$f],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file(
-        Proto3::Schema::File->new(
+        Protobuf::Schema::File->new(
             name => 'x.proto', package => '',
             messages => [$m], enums => [], services => [], imports => [],
         )
     );
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 # Wire types 6 and 7 do not exist in the protobuf wire format. A tag carrying
@@ -46,7 +46,7 @@ for my $case (
     my $codec = codec_for();
     my $ok = eval { $codec->decode( 'M', $bytes ); 1 };
     ok( !$ok, "decode rejects $label" );
-    isa_ok( $@, 'Proto3::Exception::Wire', "$label throws a wire exception" );
+    isa_ok( $@, 'Protobuf::Exception::Wire', "$label throws a wire exception" );
 }
 
 # Wire types 3 (SGROUP) and 4 (EGROUP) are VALID group delimiters and must NOT
@@ -72,7 +72,7 @@ for my $case (
     my $codec = codec_for();
     my $ok = eval { $codec->decode( 'M', $bytes ); 1 };
     ok( !$ok, "decode rejects $label" );
-    isa_ok( $@, 'Proto3::Exception::Wire', "$label throws a wire exception" );
+    isa_ok( $@, 'Protobuf::Exception::Wire', "$label throws a wire exception" );
 }
 
 # An overlong tag varint (continuation bytes beyond the canonical encoding) is
@@ -83,7 +83,7 @@ for my $case (
     my $bytes = "\x88\x80\x80\x80\x80\x80\x80\x80\x00";
     my $ok = eval { $codec->decode( 'M', $bytes ); 1 };
     ok( !$ok, 'decode rejects an overlong tag varint' );
-    isa_ok( $@, 'Proto3::Exception::Wire',
+    isa_ok( $@, 'Protobuf::Exception::Wire',
         'overlong tag varint throws a wire exception' );
 }
 

@@ -5,28 +5,28 @@ use strict;
 use warnings;
 use Test::More;
 
-use Proto3::Exception;
+use Protobuf::Exception;
 
 # ---------------------------------------------------------------------------
 # T-exc-1: construction, message accessor, throw dies with an object.
 # ---------------------------------------------------------------------------
 {
-    my $exc = Proto3::Exception->new( message => 'boom' );
-    isa_ok( $exc, 'Proto3::Exception', 'new returns a Proto3::Exception' );
+    my $exc = Protobuf::Exception->new( message => 'boom' );
+    isa_ok( $exc, 'Protobuf::Exception', 'new returns a Protobuf::Exception' );
     is( $exc->message, 'boom', 'message accessor returns the supplied text' );
 
     eval { $exc->throw };
     my $err = $@;
     ok( ref $err, 'throw dies with a reference (object), not a string' );
-    isa_ok( $err, 'Proto3::Exception', 'thrown value is a Proto3::Exception' );
+    isa_ok( $err, 'Protobuf::Exception', 'thrown value is a Protobuf::Exception' );
     is( $err, $exc, 'throw dies with the same object it was called on' );
 }
 
 # throw can also be used as a class/constructor shortcut.
 {
-    eval { Proto3::Exception->throw( message => 'kaboom' ) };
+    eval { Protobuf::Exception->throw( message => 'kaboom' ) };
     my $err = $@;
-    isa_ok( $err, 'Proto3::Exception', 'class-method throw dies with an object' );
+    isa_ok( $err, 'Protobuf::Exception', 'class-method throw dies with an object' );
     is( $err->message, 'kaboom', 'class-method throw carries the message' );
 }
 
@@ -34,7 +34,7 @@ use Proto3::Exception;
 # T-exc-2: stringification overload yields the message text.
 # ---------------------------------------------------------------------------
 {
-    my $exc = Proto3::Exception->new(
+    my $exc = Protobuf::Exception->new(
         message => "field 'name' (#3) is invalid" );
     is( "$exc", "field 'name' (#3) is invalid",
         'stringification yields the interpolated message' );
@@ -48,14 +48,14 @@ use Proto3::Exception;
 # T-exc-3: isa hierarchy holds three levels deep.
 # ---------------------------------------------------------------------------
 {
-    my $exc = Proto3::Exception::Wire::Truncated->new( message => 'short read' );
-    isa_ok( $exc, 'Proto3::Exception::Wire::Truncated' );
-    isa_ok( $exc, 'Proto3::Exception::Wire' );
-    isa_ok( $exc, 'Proto3::Exception' );
+    my $exc = Protobuf::Exception::Wire::Truncated->new( message => 'short read' );
+    isa_ok( $exc, 'Protobuf::Exception::Wire::Truncated' );
+    isa_ok( $exc, 'Protobuf::Exception::Wire' );
+    isa_ok( $exc, 'Protobuf::Exception' );
     is( "$exc", 'short read', 'subclass inherits stringification overload' );
 
     eval { $exc->throw };
-    isa_ok( $@, 'Proto3::Exception::Wire::Truncated',
+    isa_ok( $@, 'Protobuf::Exception::Wire::Truncated',
         'subclass throw dies with the subclass object' );
 }
 
@@ -63,52 +63,52 @@ use Proto3::Exception;
 # cause defaults to undef and round-trips when supplied.
 # ---------------------------------------------------------------------------
 {
-    my $bare = Proto3::Exception->new( message => 'no cause' );
+    my $bare = Protobuf::Exception->new( message => 'no cause' );
     is( $bare->cause, undef, 'cause defaults to undef' );
 
-    my $root = Proto3::Exception->new( message => 'root' );
-    my $wrap = Proto3::Exception->new( message => 'wrapper', cause => $root );
+    my $root = Protobuf::Exception->new( message => 'root' );
+    my $wrap = Protobuf::Exception->new( message => 'wrapper', cause => $root );
     is( $wrap->cause, $root, 'cause round-trips the supplied value' );
 }
 
 # throw with no message still dies with a usable object.
 {
-    eval { Proto3::Exception->new->throw };
+    eval { Protobuf::Exception->new->throw };
     my $err = $@;
-    isa_ok( $err, 'Proto3::Exception', 'throw with no message still dies usably' );
+    isa_ok( $err, 'Protobuf::Exception', 'throw with no message still dies usably' );
     ok( defined "$err", 'stringifying a message-less exception is defined' );
 }
 
 # ---------------------------------------------------------------------------
-# Every declared subclass exists and chains to its domain base + Proto3::Exception.
+# Every declared subclass exists and chains to its domain base + Protobuf::Exception.
 # ---------------------------------------------------------------------------
 my %hierarchy = (
-    'Proto3::Exception::Argument' => 'Proto3::Exception',
+    'Protobuf::Exception::Argument' => 'Protobuf::Exception',
 
-    'Proto3::Exception::Wire'                  => 'Proto3::Exception',
-    'Proto3::Exception::Wire::Truncated'       => 'Proto3::Exception::Wire',
-    'Proto3::Exception::Wire::VarintTooLong'   => 'Proto3::Exception::Wire',
-    'Proto3::Exception::Wire::DeprecatedGroup' => 'Proto3::Exception::Wire',
+    'Protobuf::Exception::Wire'                  => 'Protobuf::Exception',
+    'Protobuf::Exception::Wire::Truncated'       => 'Protobuf::Exception::Wire',
+    'Protobuf::Exception::Wire::VarintTooLong'   => 'Protobuf::Exception::Wire',
+    'Protobuf::Exception::Wire::DeprecatedGroup' => 'Protobuf::Exception::Wire',
 
-    'Proto3::Exception::Schema'                 => 'Proto3::Exception',
-    'Proto3::Exception::Schema::DuplicateField' => 'Proto3::Exception::Schema',
-    'Proto3::Exception::Schema::DuplicateMessage' =>
-        'Proto3::Exception::Schema',
-    'Proto3::Exception::Schema::UnresolvedType' => 'Proto3::Exception::Schema',
+    'Protobuf::Exception::Schema'                 => 'Protobuf::Exception',
+    'Protobuf::Exception::Schema::DuplicateField' => 'Protobuf::Exception::Schema',
+    'Protobuf::Exception::Schema::DuplicateMessage' =>
+        'Protobuf::Exception::Schema',
+    'Protobuf::Exception::Schema::UnresolvedType' => 'Protobuf::Exception::Schema',
 
-    'Proto3::Exception::Parser'                  => 'Proto3::Exception',
-    'Proto3::Exception::Parser::ImportNotFound'  => 'Proto3::Exception::Parser',
-    'Proto3::Exception::Parser::ImportCycle'     => 'Proto3::Exception::Parser',
-    'Proto3::Exception::Parser::UnsupportedSyntax' =>
-        'Proto3::Exception::Parser',
+    'Protobuf::Exception::Parser'                  => 'Protobuf::Exception',
+    'Protobuf::Exception::Parser::ImportNotFound'  => 'Protobuf::Exception::Parser',
+    'Protobuf::Exception::Parser::ImportCycle'     => 'Protobuf::Exception::Parser',
+    'Protobuf::Exception::Parser::UnsupportedSyntax' =>
+        'Protobuf::Exception::Parser',
 
-    'Proto3::Exception::Codec'               => 'Proto3::Exception',
-    'Proto3::Exception::Codec::TypeMismatch' => 'Proto3::Exception::Codec',
-    'Proto3::Exception::Codec::UnknownType'  => 'Proto3::Exception::Codec',
+    'Protobuf::Exception::Codec'               => 'Protobuf::Exception',
+    'Protobuf::Exception::Codec::TypeMismatch' => 'Protobuf::Exception::Codec',
+    'Protobuf::Exception::Codec::UnknownType'  => 'Protobuf::Exception::Codec',
 
-    'Proto3::Exception::JSON'       => 'Proto3::Exception',
-    'Proto3::Exception::JSON::Parse' => 'Proto3::Exception::JSON',
-    'Proto3::Exception::JSON::WKT'   => 'Proto3::Exception::JSON',
+    'Protobuf::Exception::JSON'       => 'Protobuf::Exception',
+    'Protobuf::Exception::JSON::Parse' => 'Protobuf::Exception::JSON',
+    'Protobuf::Exception::JSON::WKT'   => 'Protobuf::Exception::JSON',
 );
 
 for my $class ( sort keys %hierarchy ) {
@@ -116,7 +116,7 @@ for my $class ( sort keys %hierarchy ) {
     my $exc    = $class->new( message => "msg for $class" );
     isa_ok( $exc, $class,                'constructed' );
     isa_ok( $exc, $parent,               "isa $parent" );
-    isa_ok( $exc, 'Proto3::Exception',   'isa Proto3::Exception' );
+    isa_ok( $exc, 'Protobuf::Exception',   'isa Protobuf::Exception' );
     is( "$exc", "msg for $class", "$class stringifies to its message" );
 }
 

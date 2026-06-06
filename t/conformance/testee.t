@@ -1,14 +1,14 @@
-# ABOUTME: Step 30 — drives Proto3::Conformance::handle_request directly with a
+# ABOUTME: Step 30 — drives Protobuf::Conformance::handle_request directly with a
 # ConformanceRequest and asserts the ConformanceResponse (no external runner).
 use v5.38;
 use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Conformance;
-use Proto3::DescriptorSet;
-use Proto3::Codec;
-use Proto3::JSON;
+use Protobuf::Conformance;
+use Protobuf::DescriptorSet;
+use Protobuf::Codec;
+use Protobuf::JSON;
 
 # ----------------------------------------------------------------------
 # The conformance schema (ConformanceRequest/Response + the test message
@@ -18,9 +18,9 @@ use Proto3::JSON;
 # author request payloads and verify response payloads.
 # ----------------------------------------------------------------------
 
-my $schema = Proto3::DescriptorSet->load_file('share/proto/conformance.fds');
-my $codec  = Proto3::Codec->new( schema => $schema );
-my $json   = Proto3::JSON->new( codec => $codec, schema => $schema );
+my $schema = Protobuf::DescriptorSet->load_file('share/proto/conformance.fds');
+my $codec  = Protobuf::Codec->new( schema => $schema );
+my $json   = Protobuf::JSON->new( codec => $codec, schema => $schema );
 
 my $REQUEST  = 'conformance.ConformanceRequest';
 my $RESPONSE = 'conformance.ConformanceResponse';
@@ -34,7 +34,7 @@ my $WIRE_JSON     = 2;
 # the ConformanceResponse it returns. handle_request takes/returns raw bytes.
 sub run_request ($request_hashref) {
     my $request_bytes  = $codec->encode( $REQUEST, $request_hashref );
-    my $response_bytes = Proto3::Conformance::handle_request($request_bytes);
+    my $response_bytes = Protobuf::Conformance::handle_request($request_bytes);
     return $codec->decode( $RESPONSE, $response_bytes );
 }
 
@@ -149,7 +149,7 @@ my $PAYLOAD = { optional_int32 => 42, optional_string => 'conformance' };
 # pipe before sending the next request. If run_stdio writes a response into a
 # block-buffered handle without flushing, the runner blocks forever waiting for
 # bytes stuck in Perl's buffer and the whole suite deadlocks. Drive the actual
-# bin/proto3-conformance over pipes and require a framed response back BEFORE
+# bin/protobuf-conformance over pipes and require a framed response back BEFORE
 # closing stdin; an unflushed write makes this read hang (caught by alarm).
 SKIP: {
     require IPC::Open2;
@@ -165,7 +165,7 @@ SKIP: {
 
     my ( $out, $in );
     my $pid = eval {
-        IPC::Open2::open2( $out, $in, $^X, '-Ilib', 'bin/proto3-conformance' );
+        IPC::Open2::open2( $out, $in, $^X, '-Ilib', 'bin/protobuf-conformance' );
     };
     skip "cannot spawn testee: $@", 2 unless $pid;
     binmode $in;

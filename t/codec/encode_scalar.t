@@ -1,41 +1,41 @@
-# ABOUTME: Unit tests for Proto3::Codec encode of singular scalar fields.
+# ABOUTME: Unit tests for Protobuf::Codec encode of singular scalar fields.
 # Covers default-omit, optional explicit presence, per-type wire types, TypeMismatch.
 use v5.38;
 use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a one-message schema with the given fields and return ($codec, $full).
-# Each field spec is a hashref passed straight to Proto3::Schema::Field->new,
+# Each field spec is a hashref passed straight to Protobuf::Schema::Field->new,
 # minus the implied name/number which the caller supplies.
 my sub schema_with_message (@field_specs) {
-    my @fields = map { Proto3::Schema::Field->new(%$_) } @field_specs;
+    my @fields = map { Protobuf::Schema::Field->new(%$_) } @field_specs;
 
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => \@fields,
     );
 
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [$message],
     );
 
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
 
-    my $codec = Proto3::Codec->new( schema => $schema );
+    my $codec = Protobuf::Codec->new( schema => $schema );
     return ( $codec, 'pkg.M' );
 }
 
@@ -53,7 +53,7 @@ my sub int32_field (%overrides) {
 
 {
     my ( $codec, $full ) = schema_with_message( int32_field() );
-    isa_ok( $codec, 'Proto3::Codec', 'new returns a Proto3::Codec' );
+    isa_ok( $codec, 'Protobuf::Codec', 'new returns a Protobuf::Codec' );
 }
 
 # --- T-codec-1: empty message encodes to "" ----------------------------
@@ -187,7 +187,7 @@ for my $case (@scalar_cases) {
     my $err;
     eval { $codec->encode( 'pkg.Nope', {} ); 1 } or $err = $@;
     ok( $err, 'encode of unknown type dies' );
-    isa_ok( $err, 'Proto3::Exception::Codec::UnknownType',
+    isa_ok( $err, 'Protobuf::Exception::Codec::UnknownType',
         'unknown type -> UnknownType' );
 }
 
@@ -198,7 +198,7 @@ for my $case (@scalar_cases) {
     my $err;
     eval { $codec->encode( $full, { f => 'not-a-number' } ); 1 } or $err = $@;
     ok( $err, 'encode of wrong-type value dies' );
-    isa_ok( $err, 'Proto3::Exception::Codec::TypeMismatch',
+    isa_ok( $err, 'Protobuf::Exception::Codec::TypeMismatch',
         'wrong-type value -> TypeMismatch' );
     like( "$err", qr/\bf\b/,     'TypeMismatch names the field' );
     like( "$err", qr/int32/,     'TypeMismatch names the expected type' );

@@ -1,39 +1,39 @@
-# ABOUTME: Unit tests for Proto3::Class::Generator — runtime build of Perl
+# ABOUTME: Unit tests for Protobuf::Class::Generator — runtime build of Perl
 # classes from a Schema::Message with typed accessors and construction (§4.6).
 use v5.38;
 use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Oneof;
-use Proto3::Class::Generator;
-use Proto3::Class::Accessor;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Oneof;
+use Protobuf::Class::Generator;
+use Protobuf::Class::Accessor;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a single-message schema from the given field specs and return
 # ($schema, $message). Each spec is a hashref passed to Schema::Field->new.
 my sub schema_with_fields (@field_specs) {
-    my @fields = map { Proto3::Schema::Field->new(%$_) } @field_specs;
+    my @fields = map { Protobuf::Schema::Field->new(%$_) } @field_specs;
 
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => \@fields,
     );
 
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [$message],
     );
 
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
 
     return ( $schema, $message );
@@ -43,15 +43,15 @@ my sub schema_with_fields (@field_specs) {
 my $pkg_counter = 0;
 my sub next_pkg { return 'T::Gen::M' . ( ++$pkg_counter ) }
 
-# --- Proto3::Class::Accessor: name computation --------------------------
+# --- Protobuf::Class::Accessor: name computation --------------------------
 
-is( Proto3::Class::Accessor::accessor_name('encoding'),
+is( Protobuf::Class::Accessor::accessor_name('encoding'),
     'encoding', 'plain field name unchanged' );
-is( Proto3::Class::Accessor::accessor_name('package'),
+is( Protobuf::Class::Accessor::accessor_name('package'),
     'package_', 'keyword-clash field gets trailing underscore' );
-is( Proto3::Class::Accessor::accessor_name('print'),
+is( Protobuf::Class::Accessor::accessor_name('print'),
     'print_', 'keyword print -> print_' );
-is( Proto3::Class::Accessor::accessor_name('workflow_id'),
+is( Protobuf::Class::Accessor::accessor_name('workflow_id'),
     'workflow_id', 'snake_case non-keyword unchanged' );
 
 # --- T-class-1: build + new + getters + to_hashref ----------------------
@@ -63,7 +63,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
     );
     my $target = next_pkg();
 
-    my $built = Proto3::Class::Generator->build(
+    my $built = Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -90,7 +90,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         { name => 'count',    number => 2, type => 'int32' },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -112,7 +112,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         { name => 'encoding', number => 1, type => 'string' },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -132,7 +132,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         { name => 'encoding', number => 1, type => 'string' },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -142,7 +142,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
     eval { $target->new( { encoding => 'x', bogus => 1 } ); 1 }
         or $err = $@;
     ok( $err, 'unknown ctor key dies' );
-    isa_ok( $err, 'Proto3::Exception::Argument',
+    isa_ok( $err, 'Protobuf::Exception::Argument',
         'unknown ctor key -> Argument' );
     like( "$err", qr/bogus/, 'Argument names the offending key' );
 }
@@ -154,7 +154,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         { name => 'count', number => 1, type => 'int32' },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -164,7 +164,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
     my $err;
     eval { $obj->set_count('not-a-number'); 1 } or $err = $@;
     ok( $err, 'wrong-type setter dies' );
-    isa_ok( $err, 'Proto3::Exception::Codec::TypeMismatch',
+    isa_ok( $err, 'Protobuf::Exception::Codec::TypeMismatch',
         'wrong-type setter -> TypeMismatch' );
 }
 
@@ -175,7 +175,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         { name => 'package', number => 1, type => 'string' },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -204,7 +204,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         { name => 'encoding', number => 1, type => 'string' },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -229,7 +229,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -263,19 +263,19 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
 {
     # A map field points at a synthetic MapEntry message (key=1, value=2) and is
     # flagged via map_entry + label 'repeated'.
-    my $entry = Proto3::Schema::Message->new(
+    my $entry = Protobuf::Schema::Message->new(
         name         => 'AttrsEntry',
         full_name    => 'pkg.M.AttrsEntry',
         is_map_entry => 1,
         fields       => [
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'key', number => 1, type => 'string' ),
-            Proto3::Schema::Field->new(
+            Protobuf::Schema::Field->new(
                 name => 'value', number => 2, type => 'int32' ),
         ],
     );
 
-    my $map_field = Proto3::Schema::Field->new(
+    my $map_field = Protobuf::Schema::Field->new(
         name      => 'attrs',
         number    => 1,
         type      => 'message',
@@ -283,21 +283,21 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         map_entry => $entry,
     );
 
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [$map_field],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [$message],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
 
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -326,36 +326,36 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
 # --- T-class-3: oneof — setting one member clears siblings; which_<oneof> -----
 
 {
-    my $oneof = Proto3::Schema::Oneof->new(
+    my $oneof = Protobuf::Schema::Oneof->new(
         name        => 'kind',
         oneof_index => 0,
     );
 
     my @fields = (
-        Proto3::Schema::Field->new(
+        Protobuf::Schema::Field->new(
             name => 'text', number => 1, type => 'string', oneof_index => 0 ),
-        Proto3::Schema::Field->new(
+        Protobuf::Schema::Field->new(
             name => 'number', number => 2, type => 'int32', oneof_index => 0 ),
-        Proto3::Schema::Field->new(
+        Protobuf::Schema::Field->new(
             name => 'tag', number => 3, type => 'string' ),
     );
 
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => \@fields,
         oneofs    => [$oneof],
     );
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [$message],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
 
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,
@@ -400,7 +400,7 @@ is( Proto3::Class::Accessor::accessor_name('workflow_id'),
         },
     );
     my $target = next_pkg();
-    Proto3::Class::Generator->build(
+    Protobuf::Class::Generator->build(
         schema         => $schema,
         message        => $message,
         target_package => $target,

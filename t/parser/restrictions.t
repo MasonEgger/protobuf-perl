@@ -1,4 +1,4 @@
-# ABOUTME: Tests for Proto3::Parser::Grammar proto3 restrictions — rejecting
+# ABOUTME: Tests for Protobuf::Parser::Grammar proto3 restrictions — rejecting
 # proto2-only constructs (proto2 syntax, no syntax, required, group, scalar
 # defaults) while accepting the proto3 `optional` keyword (spec §4.4).
 use v5.38;
@@ -6,12 +6,12 @@ use strict;
 use warnings;
 use Test::More;
 
-use Proto3::Parser::Grammar;
-use Proto3::Exception;
+use Protobuf::Parser::Grammar;
+use Protobuf::Exception;
 
-# Helper: parse proto3 source into a Proto3::Schema::File.
+# Helper: parse proto3 source into a Protobuf::Schema::File.
 sub parse ($src, $name = 'test.proto') {
-    return Proto3::Parser::Grammar->new(
+    return Protobuf::Parser::Grammar->new(
         source    => $src,
         file_name => $name,
     )->parse;
@@ -36,7 +36,7 @@ message M { int32 x = 1; }
 PROTO
     my $err = exception_from( sub { parse($src) } );
     ok $err, 'an exception was raised';
-    isa_ok $err, 'Proto3::Exception::Parser::UnsupportedSyntax',
+    isa_ok $err, 'Protobuf::Exception::Parser::UnsupportedSyntax',
         'proto2 raises UnsupportedSyntax';
     like "$err", qr/proto2/, 'message names the offending syntax value';
     is $err->line, 1, 'line points at the syntax statement';
@@ -51,7 +51,7 @@ message M { int32 x = 1; }
 PROTO
     my $err = exception_from( sub { parse($src) } );
     ok $err, 'an exception was raised';
-    isa_ok $err, 'Proto3::Exception::Parser::UnsupportedSyntax',
+    isa_ok $err, 'Protobuf::Exception::Parser::UnsupportedSyntax',
         'missing syntax raises UnsupportedSyntax';
     like "$err", qr/syntax/, 'message mentions the required syntax statement';
 };
@@ -65,9 +65,9 @@ message M { required string foo = 1; }
 PROTO
     my $err = exception_from( sub { parse($src) } );
     ok $err, 'an exception was raised';
-    isa_ok $err, 'Proto3::Exception::Parser',
+    isa_ok $err, 'Protobuf::Exception::Parser',
         'required raises a Parser error';
-    ok !$err->isa('Proto3::Exception::Parser::UnsupportedSyntax'),
+    ok !$err->isa('Protobuf::Exception::Parser::UnsupportedSyntax'),
         'required is a plain Parser error, not UnsupportedSyntax';
     like "$err", qr/\brequired\b/, 'message names the `required` keyword';
     is $err->line, 2, 'line points at the field';
@@ -87,7 +87,7 @@ message M {
 PROTO
     my $err = exception_from( sub { parse($src) } );
     ok $err, 'an exception was raised';
-    isa_ok $err, 'Proto3::Exception::Parser', 'group raises a Parser error';
+    isa_ok $err, 'Protobuf::Exception::Parser', 'group raises a Parser error';
     like "$err", qr/\bgroup\b/, 'message names the `group` keyword';
     is $err->line, 3, 'line points at the group declaration';
 };
@@ -101,7 +101,7 @@ message M { int32 x = 1 [default = 5]; }
 PROTO
     my $err = exception_from( sub { parse($src) } );
     ok $err, 'an exception was raised';
-    isa_ok $err, 'Proto3::Exception::Parser',
+    isa_ok $err, 'Protobuf::Exception::Parser',
         'a scalar default raises a Parser error';
     like "$err", qr/\bdefault\b/, 'message names the forbidden `default` option';
     is $err->line, 2, 'line points at the field';

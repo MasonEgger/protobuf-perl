@@ -1,13 +1,13 @@
 # ABOUTME: Fuzz test (T-wire-9) for the proto3 wire decoder robustness.
 # Feeds 10000 seeded random byte strings through decode_tag + skip_field; every
-# input must either fully decode or raise a typed Proto3::Exception::Wire.
+# input must either fully decode or raise a typed Protobuf::Exception::Wire.
 package main;
 
 use v5.38;
 use warnings;
 use Test::More;
-use Proto3::Wire qw(decode_tag skip_field);
-use Proto3::Exception;
+use Protobuf::Wire qw(decode_tag skip_field);
+use Protobuf::Exception;
 use Scalar::Util qw(blessed);
 
 # Fixed seed for reproducibility: the same 10000 inputs every run.
@@ -36,7 +36,7 @@ for my $iter (1 .. $ITERATIONS) {
     my $err = $@;
     # A failure is acceptable ONLY if it is a typed Wire exception, never an
     # untyped die.
-    unless ( blessed($err) && $err->isa('Proto3::Exception::Wire') ) {
+    unless ( blessed($err) && $err->isa('Protobuf::Exception::Wire') ) {
         $bad++;
         diag sprintf(
             "iter %d: input %s raised non-Wire error: %s",

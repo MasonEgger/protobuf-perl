@@ -1,4 +1,4 @@
-# ABOUTME: Tests for Proto3::Parser facade — include_paths search + abs-path
+# ABOUTME: Tests for Protobuf::Parser facade — include_paths search + abs-path
 # cache, import kinds, file/message/field options, services, T-parse-1 round-trip.
 use v5.38;
 use strict;
@@ -8,8 +8,8 @@ use File::Temp qw(tempdir);
 use File::Path qw(make_path);
 use File::Spec;
 
-use Proto3::Parser;
-use Proto3::Exception;
+use Protobuf::Parser;
+use Protobuf::Exception;
 
 # Helper: run $code and return the exception it throws (or undef).
 sub exception_from ($code) {
@@ -52,7 +52,7 @@ message FromB { int32 x = 1; }
 PROTO
 
     my $parser =
-        Proto3::Parser->new( include_paths => [ $root_a, $root_b ] );
+        Protobuf::Parser->new( include_paths => [ $root_a, $root_b ] );
     my $file = $parser->parse_file('pkg/thing.proto');
 
     is $file->messages->[0]->name, 'FromA',
@@ -67,7 +67,7 @@ syntax = "proto3";
 message A { int32 x = 1; }
 PROTO
 
-    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $parser = Protobuf::Parser->new( include_paths => [$root] );
     my $first  = $parser->parse_file('a.proto');
     my $second = $parser->parse_file('a.proto');
 
@@ -84,7 +84,7 @@ import public "foo.proto";
 import weak "bar.proto";
 message M { int32 x = 1; }
 PROTO
-    my $parser = Proto3::Parser->new;
+    my $parser = Protobuf::Parser->new;
     my $file   = $parser->parse_string( 'imp.proto', $src );
 
     my $imports = $file->imports;
@@ -113,7 +113,7 @@ message M {
   string y = 2 [json_name = "yField"];
 }
 PROTO
-    my $parser = Proto3::Parser->new;
+    my $parser = Protobuf::Parser->new;
     my $file   = $parser->parse_string( 'opt.proto', $src );
 
     is $file->options->{java_package}, 'com.example',
@@ -145,7 +145,7 @@ service Greeter {
   rpc BiDi (stream Req) returns (stream Resp);
 }
 PROTO
-    my $parser = Proto3::Parser->new;
+    my $parser = Protobuf::Parser->new;
     my $file   = $parser->parse_string( 'svc.proto', $src );
 
     is scalar( @{ $file->services } ), 1, 'one service parsed';
@@ -187,10 +187,10 @@ message Trivial {
   repeated bytes blobs = 3;
 }
 PROTO
-    my $parser = Proto3::Parser->new;
+    my $parser = Protobuf::Parser->new;
     my $first  = $parser->parse_string( 'rt.proto', $src );
 
-    my $text   = Proto3::Parser->serialize($first);
+    my $text   = Protobuf::Parser->serialize($first);
     my $second = $parser->parse_string( 'rt.proto', $text );
 
     is $second->package, $first->package, 'package preserved through round-trip';
@@ -216,11 +216,11 @@ PROTO
 
 subtest 'parse_file: missing file raises ImportNotFound' => sub {
     my $root = tempdir( CLEANUP => 1 );
-    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $parser = Protobuf::Parser->new( include_paths => [$root] );
 
     my $err = exception_from( sub { $parser->parse_file('nope.proto') } );
     ok $err, 'missing file raises';
-    isa_ok $err, 'Proto3::Exception::Parser::ImportNotFound',
+    isa_ok $err, 'Protobuf::Exception::Parser::ImportNotFound',
         'raises ImportNotFound';
     like "$err", qr/nope\.proto/, 'error names the missing file';
 };
@@ -249,10 +249,10 @@ package chain;
 message Leaf { int32 v = 1; }
 PROTO
 
-    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $parser = Protobuf::Parser->new( include_paths => [$root] );
     my $schema = $parser->parse_with_imports('top.proto');
 
-    isa_ok $schema, 'Proto3::Schema', 'returns a Proto3::Schema';
+    isa_ok $schema, 'Protobuf::Schema', 'returns a Protobuf::Schema';
     ok $schema->file('top.proto'),  'top file present';
     ok $schema->file('mid.proto'),  'transitively-imported mid present';
     ok $schema->file('leaf.proto'), 'transitively-imported leaf present';
@@ -294,7 +294,7 @@ package dia;
 message Base { int32 v = 1; }
 PROTO
 
-    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $parser = Protobuf::Parser->new( include_paths => [$root] );
     my $schema = $parser->parse_with_imports('top.proto');
 
     is scalar @{ $schema->files }, 4, 'four distinct files (base once)';
@@ -324,10 +324,10 @@ import "a.proto";
 message B { int32 v = 1; }
 PROTO
 
-    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $parser = Protobuf::Parser->new( include_paths => [$root] );
     my $err = exception_from( sub { $parser->parse_with_imports('a.proto') } );
     ok $err, 'cyclic import raises';
-    isa_ok $err, 'Proto3::Exception::Parser::ImportCycle',
+    isa_ok $err, 'Protobuf::Exception::Parser::ImportCycle',
         'raises ImportCycle';
 };
 
@@ -348,7 +348,7 @@ package x;
 message Payload { string s = 1; }
 PROTO
 
-    my $parser = Proto3::Parser->new( include_paths => [$root] );
+    my $parser = Protobuf::Parser->new( include_paths => [$root] );
     my $schema = $parser->parse_with_imports('top.proto');
     $schema->resolve;
 

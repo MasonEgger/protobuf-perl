@@ -1,16 +1,16 @@
-# ABOUTME: Tests for Proto3::Parser::Grammar core — syntax/package/message and
+# ABOUTME: Tests for Protobuf::Parser::Grammar core — syntax/package/message and
 # all scalar field types, json_name camelCase, labels, and required-syntax (§4.4).
 use v5.38;
 use strict;
 use warnings;
 use Test::More;
 
-use Proto3::Parser::Grammar;
-use Proto3::Exception;
+use Protobuf::Parser::Grammar;
+use Protobuf::Exception;
 
-# Helper: parse proto3 source into a Proto3::Schema::File.
+# Helper: parse proto3 source into a Protobuf::Schema::File.
 sub parse ($src, $name = 'test.proto') {
-    return Proto3::Parser::Grammar->new(
+    return Protobuf::Parser::Grammar->new(
         source    => $src,
         file_name => $name,
     )->parse;
@@ -41,13 +41,13 @@ $body}
 PROTO
 
     my $file = parse($src);
-    isa_ok $file, 'Proto3::Schema::File', 'parse returns a Schema::File';
+    isa_ok $file, 'Protobuf::Schema::File', 'parse returns a Schema::File';
     is $file->syntax,  'proto3', 'syntax is proto3';
     is $file->package, 'a.b.c',  'package captured';
 
     is scalar @{ $file->messages }, 1, 'one top-level message';
     my $msg = $file->messages->[0];
-    isa_ok $msg, 'Proto3::Schema::Message', 'message is a Schema::Message';
+    isa_ok $msg, 'Protobuf::Schema::Message', 'message is a Schema::Message';
     is $msg->name,      'Thing',       'message name';
     is $msg->full_name, 'a.b.c.Thing', 'message full_name includes package';
 
@@ -57,7 +57,7 @@ PROTO
     my $expect = 1;
     for my $type (@scalars) {
         my $field = $by_name->{"f_$type"};
-        isa_ok $field, 'Proto3::Schema::Field', "field f_$type";
+        isa_ok $field, 'Protobuf::Schema::Field', "field f_$type";
         is $field->type,   $type,      "f_$type has type $type";
         is $field->number, $expect++,  "f_$type has correct number";
         is $field->label,  'singular', "f_$type is singular";
@@ -90,7 +90,7 @@ package a.b;
 message M { int32 x = 1; }
 PROTO
     my $err = exception_from(sub { parse($src) });
-    isa_ok $err, 'Proto3::Exception::Parser',
+    isa_ok $err, 'Protobuf::Exception::Parser',
         'missing syntax raises a Parser error';
     ok defined $err->line, 'error carries a line number';
 
@@ -98,7 +98,7 @@ PROTO
 message M { int32 x = 1; }
 PROTO
     my $err2 = exception_from(sub { parse($wrong) });
-    isa_ok $err2, 'Proto3::Exception::Parser',
+    isa_ok $err2, 'Protobuf::Exception::Parser',
         'a non-syntax first statement raises a Parser error';
 };
 
@@ -145,7 +145,7 @@ message M {
 }
 PROTO
     my $err = exception_from(sub { parse($dup) });
-    isa_ok $err, 'Proto3::Exception::Schema::DuplicateField',
+    isa_ok $err, 'Protobuf::Exception::Schema::DuplicateField',
         'duplicate field number surfaces the Schema DuplicateField error';
 };
 

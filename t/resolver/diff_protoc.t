@@ -7,12 +7,12 @@ use Test::More;
 use lib 'lib';
 use lib 't/lib';
 
-use Proto3Test::Protoc qw(have_protoc);
+use ProtobufTest::Protoc qw(have_protoc);
 
 plan skip_all => 'protoc not on PATH' unless have_protoc();
 
-use Proto3::Parser;
-use Proto3::DescriptorSet;
+use Protobuf::Parser;
+use Protobuf::DescriptorSet;
 
 use File::Temp ();
 use File::Spec ();
@@ -102,10 +102,10 @@ system(
 ) == 0 or die 'protoc failed to compile the graph';
 
 # protoc's view: load the FDS and read each field's resolved type_name directly.
-my $protoc_schema = Proto3::DescriptorSet->load_file($fds_path);
+my $protoc_schema = Protobuf::DescriptorSet->load_file($fds_path);
 
 # Our view: parse the graph and resolve with our own resolver.
-my $parser = Proto3::Parser->new( include_paths => ["$root"] );
+my $parser = Protobuf::Parser->new( include_paths => ["$root"] );
 my $our_schema = $parser->parse_with_imports('workflow_activation.proto');
 $our_schema->resolve;
 

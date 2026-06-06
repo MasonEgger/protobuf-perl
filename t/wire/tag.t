@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for Proto3::Wire::Tag — field+wire-type tag pack/unpack.
+# ABOUTME: Unit tests for Protobuf::Wire::Tag — field+wire-type tag pack/unpack.
 # Covers encode_tag spec vectors, the decode_tag (field, wire, rest) contract
 # with max-field round-trip, deprecated group wire types 3/4, and field 0.
 
@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use Test::More;
 
-use Proto3::Wire::Tag qw(
+use Protobuf::Wire::Tag qw(
     encode_tag decode_tag
     WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32
 );
@@ -78,11 +78,11 @@ use Proto3::Wire::Tag qw(
 
 # ---------------------------------------------------------------------------
 # Field number 0 is not a legal proto3 field number; encode_tag rejects it with
-# Proto3::Exception::Argument.
+# Protobuf::Exception::Argument.
 # ---------------------------------------------------------------------------
 {
     eval { encode_tag( 0, WIRE_VARINT ) };
-    isa_ok( $@, 'Proto3::Exception::Argument',
+    isa_ok( $@, 'Protobuf::Exception::Argument',
         'encode_tag field number 0 raises Argument' );
 }
 

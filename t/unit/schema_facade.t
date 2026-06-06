@@ -1,4 +1,4 @@
-# ABOUTME: Tests for the Proto3::Schema facade — file registry, fully-qualified
+# ABOUTME: Tests for the Protobuf::Schema facade — file registry, fully-qualified
 # name index (incl. nested), flattening, duplicate detection, and lookups.
 use v5.38;
 use strict;
@@ -6,33 +6,33 @@ use warnings;
 use utf8;
 use Test::More;
 
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Enum;
-use Proto3::Schema::Field;
-use Proto3::Schema::Service;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Enum;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Service;
 
 # Build an inner enum nested under Outer.
-my $inner_enum = Proto3::Schema::Enum->new(
+my $inner_enum = Protobuf::Schema::Enum->new(
     name      => 'Color',
     full_name => 'pkg.Outer.Color',
     values    => [],
 );
 
 # Build a nested message Outer.Inner.
-my $inner_msg = Proto3::Schema::Message->new(
+my $inner_msg = Protobuf::Schema::Message->new(
     name      => 'Inner',
     full_name => 'pkg.Outer.Inner',
     fields    => [],
 );
 
 # Build the Outer message with a nested message and a nested enum.
-my $outer = Proto3::Schema::Message->new(
+my $outer = Protobuf::Schema::Message->new(
     name            => 'Outer',
     full_name       => 'pkg.Outer',
     fields          => [
-        Proto3::Schema::Field->new(
+        Protobuf::Schema::Field->new(
             name => 'id', number => 1, type => 'int32', label => 'singular',
         ),
     ],
@@ -41,11 +41,11 @@ my $outer = Proto3::Schema::Message->new(
 );
 
 # A top-level enum.
-my $top_enum = Proto3::Schema::Enum->new(
+my $top_enum = Protobuf::Schema::Enum->new(
     name => 'Status', full_name => 'pkg.Status', values => [],
 );
 
-my $file = Proto3::Schema::File->new(
+my $file = Protobuf::Schema::File->new(
     name     => 'pkg.proto',
     package  => 'pkg',
     messages => [$outer],
@@ -53,7 +53,7 @@ my $file = Proto3::Schema::File->new(
 );
 
 # 7.1 — add_file / files / file round-trip.
-my $schema = Proto3::Schema->new;
+my $schema = Protobuf::Schema->new;
 $schema->add_file($file);
 
 is( scalar @{ $schema->files }, 1, 'files() returns the one added file' );
@@ -94,11 +94,11 @@ is_deeply(
 
 # service lookup works against File services.
 {
-    my $schema2 = Proto3::Schema->new;
-    my $svc = Proto3::Schema::Service->new(
+    my $schema2 = Protobuf::Schema->new;
+    my $svc = Protobuf::Schema::Service->new(
         name => 'Greeter', full_name => 'pkg.Greeter', methods => [],
     );
-    my $f2 = Proto3::Schema::File->new(
+    my $f2 = Protobuf::Schema::File->new(
         name => 'svc.proto', package => 'pkg', services => [$svc],
     );
     $schema2->add_file($f2);
@@ -108,17 +108,17 @@ is_deeply(
 
 # 7.4 — duplicate full_name across files raises DuplicateMessage.
 {
-    my $schema3 = Proto3::Schema->new;
-    my $dup1 = Proto3::Schema::Message->new(
+    my $schema3 = Protobuf::Schema->new;
+    my $dup1 = Protobuf::Schema::Message->new(
         name => 'Dup', full_name => 'pkg.Dup', fields => [],
     );
-    my $dup2 = Proto3::Schema::Message->new(
+    my $dup2 = Protobuf::Schema::Message->new(
         name => 'Dup', full_name => 'pkg.Dup', fields => [],
     );
-    my $fa = Proto3::Schema::File->new(
+    my $fa = Protobuf::Schema::File->new(
         name => 'a.proto', package => 'pkg', messages => [$dup1],
     );
-    my $fb = Proto3::Schema::File->new(
+    my $fb = Protobuf::Schema::File->new(
         name => 'b.proto', package => 'pkg', messages => [$dup2],
     );
     $schema3->add_file($fa);
@@ -127,13 +127,13 @@ is_deeply(
         eval { $schema3->add_file($fb); 1 } ? undef : $@;
     };
     ok( $err, 'duplicate full_name on add_file dies' );
-    isa_ok( $err, 'Proto3::Exception::Schema::DuplicateMessage',
+    isa_ok( $err, 'Protobuf::Exception::Schema::DuplicateMessage',
         'duplicate full_name raises DuplicateMessage' );
 }
 
 # resolve stub: callable and returns the schema for chaining.
 {
-    my $schema4 = Proto3::Schema->new;
+    my $schema4 = Protobuf::Schema->new;
     $schema4->add_file($file);
     my $ret = $schema4->resolve;
     is( $ret, $schema4, 'resolve() returns the schema (chainable stub)' );

@@ -1,4 +1,4 @@
-# ABOUTME: Proto3::JSON strict input-validation tests — malformed JSON that
+# ABOUTME: Protobuf::JSON strict input-validation tests — malformed JSON that
 # protoc rejects must throw on decode: out-of-range / non-integral integers,
 # non-string for a string field, wrong repeated element types, top-level null,
 # duplicate oneof members, and out-of-range float/double literals.
@@ -7,32 +7,32 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Schema::Enum;
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Schema::Enum;
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 my sub codec_for {
     my (%args) = @_;
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => $args{messages} // [],
         enums    => $args{enums}    // [],
     );
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
     $schema->resolve;
-    return Proto3::Codec->new( schema => $schema );
+    return Protobuf::Codec->new( schema => $schema );
 }
 
 my sub scalar_field ( $name, $number, $type, %extra ) {
-    return Proto3::Schema::Field->new(
+    return Protobuf::Schema::Field->new(
         name => $name, number => $number, type => $type, %extra,
     );
 }
@@ -41,7 +41,7 @@ my sub scalar_field ( $name, $number, $type, %extra ) {
 # the thrown exception ($@), or undef if no exception was thrown.
 my sub decode_err {
     my ( $type, $json, %extra ) = @_;
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [ scalar_field( 'f', 1, $type, %extra ) ],
@@ -54,7 +54,7 @@ my sub decode_err {
 # A message with one repeated scalar field of the given type, decoded from $json.
 my sub decode_repeated_err {
     my ( $type, $json ) = @_;
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [ scalar_field( 'f', 1, $type, label => 'repeated' ) ],
@@ -135,7 +135,7 @@ ok( decode_err( 'int32', 'null' ),
 # --- duplicate oneof members --------------------------------------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => [
@@ -164,7 +164,7 @@ ok( decode_err( 'double', '{"f": -1.89769e+308}' ),
 # --- valid forms STILL accepted (must not over-reject) ------------------
 
 {
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'Valid',
         full_name => 'pkg.Valid',
         fields    => [

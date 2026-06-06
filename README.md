@@ -1,15 +1,14 @@
-# Proto3
+# Protobuf
 
 A pure-Perl implementation of Protocol Buffers: a wire codec, a schema model, a
 `.proto` parser, the canonical JSON mapping, the well-known types, and an
 ahead-of-time class generator — with **zero install-time XS** and no compiler
 required.
 
-Despite the name, it is **not** limited to proto3. It passes the full Google
+It implements the whole format, not one dialect: it passes the full Google
 Protocol Buffers **conformance suite at protobuf v34** — `proto2`, `proto3`, and
 **editions 2023**, both Required and Recommended (`--enforce_recommended`) — with
-**zero failures**. The `Proto3` name is kept as a brand, in the spirit of `Test2`
-and `JSON::PP`.
+**zero failures**.
 
 ```
 CONFORMANCE SUITE PASSED: 2806 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
@@ -42,8 +41,8 @@ cpanm git://github.com/MasonEgger/proto3-perl.git
 cpanm git://github.com/MasonEgger/proto3-perl.git@v1
 ```
 
-This builds the distribution and installs `Proto3`, the `Proto3::*` modules, and
-the `proto3-gen-perl` / `proto3-conformance` scripts into your Perl. Because all
+This builds the distribution and installs `Protobuf`, the `Protobuf::*` modules, and
+the `protobuf-gen-perl` / `protobuf-conformance` scripts into your Perl. Because all
 prerequisites are core, there is nothing else to fetch.
 
 ### Option B — clone and install
@@ -63,7 +62,7 @@ include path:
 ```sh
 git clone https://github.com/MasonEgger/proto3-perl.git
 cd proto3-perl
-perl -Ilib -MProto3 -e 'print "Proto3 $Proto3::VERSION\n"'
+perl -Ilib -MProtobuf -e 'print "Protobuf $Protobuf::VERSION\n"'
 ```
 
 In your own code: `use lib '/path/to/proto3-perl/lib';` or run with
@@ -74,7 +73,7 @@ In your own code: `use lib '/path/to/proto3-perl/lib';` or run with
 A downstream project can depend on the Git checkout from its own `cpanfile`:
 
 ```perl
-requires 'Proto3',
+requires 'Protobuf',
     git => 'https://github.com/MasonEgger/proto3-perl.git',
     ref => 'v1';
 ```
@@ -99,7 +98,7 @@ requires 'Proto3',
 - **Well-known types** — `Timestamp`, `Duration`, `Any`, `Struct`/`Value`/
   `ListValue`/`NullValue`, `FieldMask`, `Empty`, and the scalar wrappers.
 - **Runtime classes** — generate Perl classes from a schema at runtime, or
-  **ahead-of-time** with `proto3-gen-perl` for faster startup and static
+  **ahead-of-time** with `protobuf-gen-perl` for faster startup and static
   discoverability.
 - **`FileDescriptorSet` support** — load a `protoc`-produced descriptor set
   (including v34 sets with proto2/editions) instead of parsing `.proto` text.
@@ -110,16 +109,16 @@ Parse a `.proto`, resolve it, and round-trip a message on the wire and as JSON:
 
 ```perl
 use v5.38;
-use Proto3::Parser;
-use Proto3::Codec;
+use Protobuf::Parser;
+use Protobuf::Codec;
 
 # Parse + resolve a .proto into a single schema.
-my $parser = Proto3::Parser->new( include_paths => ['proto'] );
+my $parser = Protobuf::Parser->new( include_paths => ['proto'] );
 my $schema = $parser->parse_with_imports('hello.proto');
 $schema->resolve;
 
 # A codec is the wire + JSON workhorse, bound to the resolved schema.
-my $codec = Proto3::Codec->new( schema => $schema );
+my $codec = Protobuf::Codec->new( schema => $schema );
 
 # Message values are plain hashrefs keyed by proto field name.
 my %greeting = ( text => 'Hello, world!', priority => 1 );
@@ -137,9 +136,9 @@ Prefer working with objects instead of hashrefs? Generate a class from any
 message in the resolved schema:
 
 ```perl
-use Proto3::Class::Generator;
+use Protobuf::Class::Generator;
 
-Proto3::Class::Generator->build(
+Protobuf::Class::Generator->build(
     schema         => $schema,
     message        => $schema->message('hello.Greeting'),
     target_package => 'Hello::Greeting',
@@ -162,9 +161,9 @@ If you already have a `protoc`-produced `FileDescriptorSet` (the
 `--descriptor_set_out` format), skip the parser entirely:
 
 ```perl
-use Proto3::DescriptorSet;
-my $schema = Proto3::DescriptorSet->load_file('all.fds');   # already resolved
-my $codec  = Proto3::Codec->new( schema => $schema );
+use Protobuf::DescriptorSet;
+my $schema = Protobuf::DescriptorSet->load_file('all.fds');   # already resolved
+my $codec  = Protobuf::Codec->new( schema => $schema );
 ```
 
 This is the path the conformance testee uses, and it understands proto2 and
@@ -172,13 +171,13 @@ editions descriptor sets, not just proto3.
 
 ## Ahead-of-time code generation
 
-[`bin/proto3-gen-perl`](bin/proto3-gen-perl) reads `.proto` files and emits one
+[`bin/protobuf-gen-perl`](bin/protobuf-gen-perl) reads `.proto` files and emits one
 Perl `.pm` per file — compiled, statically-discoverable message classes for
 projects that want faster startup, IDE autocompletion, and no runtime
 parse-failure surprises.
 
 ```sh
-proto3-gen-perl \
+protobuf-gen-perl \
     --include /path/to/protos \
     --output  /path/to/lib \
     --package-prefix T::Api \
@@ -192,7 +191,7 @@ path component is PascalCased and the prefix replaces the leading components, so
 `T::Api::Common::V1`.
 
 The emitted classes share the exact runtime build path of
-[`Proto3::Class::Generator`](lib/Proto3/Class/Generator.pm) — there is only one
+[`Protobuf::Class::Generator`](lib/Protobuf/Class/Generator.pm) — there is only one
 accessor/codec contract, so AOT and runtime classes cannot drift. Generated
 modules carry **no** parser or descriptor-set dependency (only the schema, codec,
 and WKT layers), and the output is **deterministic**: regenerating an unchanged
@@ -203,9 +202,9 @@ and WKT layers), and the output is **deterministic**: regenerating an unchanged
 The library passes the full **protobuf v34** conformance suite — `proto2`,
 `proto3`, and **editions 2023**, Required and Recommended — with zero failures.
 
-- The testee binary is [`bin/proto3-conformance`](bin/proto3-conformance); all of
+- The testee binary is [`bin/protobuf-conformance`](bin/protobuf-conformance); all of
   its request-handling logic lives in
-  [`Proto3::Conformance`](lib/Proto3/Conformance.pm).
+  [`Protobuf::Conformance`](lib/Protobuf/Conformance.pm).
 - The harness [`t/conformance/run_suite.t`](t/conformance/run_suite.t) unit-tests
   the verdict logic on every run, and drives the real Google
   `conformance_test_runner` against the testee **when one is available** (set

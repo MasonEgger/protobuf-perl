@@ -1,4 +1,4 @@
-# ABOUTME: Tests for the AOT code generator (bin/proto3-gen-perl + Codegen):
+# ABOUTME: Tests for the AOT code generator (bin/protobuf-gen-perl + Codegen):
 # package mapping, deterministic byte-identical output, generated-class round-trip (§4.12).
 use v5.38;
 use warnings;
@@ -9,7 +9,7 @@ use File::Temp ();
 use File::Spec ();
 use File::Path ();
 
-use Proto3::Class::Codegen;
+use Protobuf::Class::Codegen;
 
 # --- helpers ------------------------------------------------------------
 
@@ -25,9 +25,9 @@ my sub write_proto ( $dir, $rel, $content ) {
     return $abs;
 }
 
-# Run bin/proto3-gen-perl with the given args; returns ($stdout, $exit).
+# Run bin/protobuf-gen-perl with the given args; returns ($stdout, $exit).
 my sub run_gen (@args) {
-    my @cmd = ( $^X, '-Ilib', 'bin/proto3-gen-perl', @args );
+    my @cmd = ( $^X, '-Ilib', 'bin/protobuf-gen-perl', @args );
     my $out = qx{@{[ join ' ', map { quotemeta } @cmd ]} 2>&1};
     return ( $out, $? >> 8 );
 }
@@ -35,26 +35,26 @@ my sub run_gen (@args) {
 # --- package mapping (32.2) ---------------------------------------------
 
 is(
-    Proto3::Class::Codegen::package_for( 'temporal.api.common.v1', 'T::Api' ),
+    Protobuf::Class::Codegen::package_for( 'temporal.api.common.v1', 'T::Api' ),
     'T::Api::Common::V1',
     '32.2: temporal.api.common.v1 under prefix T::Api -> T::Api::Common::V1',
 );
 
 is(
-    Proto3::Class::Codegen::package_for( 'temporal.api.common.v1', undef ),
+    Protobuf::Class::Codegen::package_for( 'temporal.api.common.v1', undef ),
     'Temporal::Api::Common::V1',
     '32.2: no prefix PascalCases every component',
 );
 
 is(
-    Proto3::Class::Codegen::package_for( '', 'T::Api' ),
+    Protobuf::Class::Codegen::package_for( '', 'T::Api' ),
     'T::Api',
     '32.2: empty proto package maps to the bare prefix',
 );
 
 # A nested message full_name (pkg + dotted message path) maps to a Perl class.
 is(
-    Proto3::Class::Codegen::perl_class_for(
+    Protobuf::Class::Codegen::perl_class_for(
         'temporal.api.common.v1.Payload', 'temporal.api.common.v1', 'T::Api',
     ),
     'T::Api::Common::V1::Payload',
@@ -91,9 +91,9 @@ PROTO
 
     # 32.5: generated module must NOT pull in the parser.
     my $generated = do { open my $fh, '<', $pm or die $!; local $/; <$fh> };
-    unlike( $generated, qr/Proto3::Parser/,
-        '32.5: generated module does not reference Proto3::Parser' );
-    unlike( $generated, qr/Proto3::DescriptorSet/,
+    unlike( $generated, qr/Protobuf::Parser/,
+        '32.5: generated module does not reference Protobuf::Parser' );
+    unlike( $generated, qr/Protobuf::DescriptorSet/,
         '32.5: generated module does not reference DescriptorSet code' );
 
     # Load it and round-trip a message at RUNTIME (perl -c won't catch this).

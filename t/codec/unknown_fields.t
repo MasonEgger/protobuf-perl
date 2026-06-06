@@ -1,4 +1,4 @@
-# ABOUTME: Unit tests for Proto3::Codec unknown-field preservation (Step 15).
+# ABOUTME: Unit tests for Protobuf::Codec unknown-field preservation (Step 15).
 # preserve_unknown_fields stores raw unknown-tag bytes under {__unknown_fields__}
 # and re-emits them byte-for-byte after known fields; default drops them.
 use v5.38;
@@ -6,38 +6,38 @@ use warnings;
 use Test::More;
 use lib 'lib';
 
-use Proto3::Exception;
-use Proto3::Schema;
-use Proto3::Schema::File;
-use Proto3::Schema::Message;
-use Proto3::Schema::Field;
-use Proto3::Wire qw(encode_tag WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32);
-use Proto3::Codec;
+use Protobuf::Exception;
+use Protobuf::Schema;
+use Protobuf::Schema::File;
+use Protobuf::Schema::Message;
+use Protobuf::Schema::Field;
+use Protobuf::Wire qw(encode_tag WIRE_VARINT WIRE_I64 WIRE_LEN WIRE_I32);
+use Protobuf::Codec;
 
 # --- helpers ------------------------------------------------------------
 
 # Build a one-message schema with the given fields and return ($codec, $full).
 # Extra constructor args (e.g. preserve_unknown_fields => 1) pass through to the
-# Proto3::Codec constructor.
+# Protobuf::Codec constructor.
 my sub schema_with_message ($field_specs, %codec_args) {
-    my @fields = map { Proto3::Schema::Field->new(%$_) } @$field_specs;
+    my @fields = map { Protobuf::Schema::Field->new(%$_) } @$field_specs;
 
-    my $message = Proto3::Schema::Message->new(
+    my $message = Protobuf::Schema::Message->new(
         name      => 'M',
         full_name => 'pkg.M',
         fields    => \@fields,
     );
 
-    my $file = Proto3::Schema::File->new(
+    my $file = Protobuf::Schema::File->new(
         name     => 'm.proto',
         package  => 'pkg',
         messages => [$message],
     );
 
-    my $schema = Proto3::Schema->new;
+    my $schema = Protobuf::Schema->new;
     $schema->add_file($file);
 
-    my $codec = Proto3::Codec->new( schema => $schema, %codec_args );
+    my $codec = Protobuf::Codec->new( schema => $schema, %codec_args );
     return ( $codec, 'pkg.M' );
 }
 

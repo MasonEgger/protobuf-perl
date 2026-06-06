@@ -1,16 +1,16 @@
 # ABOUTME: T-fds-1/T-fds-3 — DescriptorSet loads a protoc FileDescriptorSet into
-# a Schema matching Proto3::Parser, with the Type-enum mapping and corrupt-FDS path.
+# a Schema matching Protobuf::Parser, with the Type-enum mapping and corrupt-FDS path.
 use v5.38;
 use warnings;
 use Test::More;
 use lib 'lib';
 use lib 't/lib';
 
-use Proto3Test::Protoc qw(have_protoc);
+use ProtobufTest::Protoc qw(have_protoc);
 
-use Proto3::DescriptorSet;
-use Proto3::Parser;
-use Proto3::Exception;
+use Protobuf::DescriptorSet;
+use Protobuf::Parser;
+use Protobuf::Exception;
 
 use File::Temp ();
 use File::Spec ();
@@ -41,29 +41,29 @@ my %EXPECTED_TYPE_MAP = (
 );
 
 is_deeply(
-    Proto3::DescriptorSet->type_enum_to_string,
+    Protobuf::DescriptorSet->type_enum_to_string,
     \%EXPECTED_TYPE_MAP,
     'protobuf Type enum maps to our scalar/message/enum type identifiers',
 );
 
 # ----------------------------------------------------------------------
 # T-fds-3: a corrupt FDS (bytes that are not a valid FileDescriptorSet)
-# surfaces a Proto3::Exception::Codec, not a silent mis-parse.
+# surfaces a Protobuf::Exception::Codec, not a silent mis-parse.
 # ----------------------------------------------------------------------
 {
     # A LEN field (field 1) claiming 50 payload bytes but with none following:
     # tag 0x0a, length 50, no body -> truncated inside the codec.
     my $corrupt = "\x0a\x32";
     my $err;
-    eval { Proto3::DescriptorSet->load_string($corrupt); 1 } or $err = $@;
+    eval { Protobuf::DescriptorSet->load_string($corrupt); 1 } or $err = $@;
     ok( $err, 'corrupt FDS raises' );
-    isa_ok( $err, 'Proto3::Exception::Codec',
-        'corrupt FDS raises Proto3::Exception::Codec' );
+    isa_ok( $err, 'Protobuf::Exception::Codec',
+        'corrupt FDS raises Protobuf::Exception::Codec' );
 }
 
 # ----------------------------------------------------------------------
 # T-fds-1: load a protoc-produced FDS and verify the Schema matches what
-# Proto3::Parser produces from the same .proto source.
+# Protobuf::Parser produces from the same .proto source.
 # ----------------------------------------------------------------------
 SKIP: {
     skip 'protoc not on PATH', 1 unless have_protoc();
@@ -109,11 +109,11 @@ PROTO
         "--descriptor_set_out=$fds_path", $proto_path ) == 0
         or die "protoc failed";
 
-    my $loaded = Proto3::DescriptorSet->load_file($fds_path);
+    my $loaded = Protobuf::DescriptorSet->load_file($fds_path);
 
-    my $parser = Proto3::Parser->new;
+    my $parser = Protobuf::Parser->new;
     my $parsed_file = $parser->parse_string( 'fds.proto', $PROTO );
-    my $parsed = Proto3::Schema->new;
+    my $parsed = Protobuf::Schema->new;
     $parsed->add_file($parsed_file);
     $parsed->resolve;
 
