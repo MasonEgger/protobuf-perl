@@ -27,6 +27,28 @@ __END__
 
 Protobuf::Schema::Service - A service definition within a schema
 
+=head1 SYNOPSIS
+
+    use Protobuf::Schema::Service;
+
+    my $svc = Protobuf::Schema::Service->new(
+        name      => 'Greeter',
+        full_name => 'hello.Greeter',
+        methods   => [
+            {   name             => 'SayHello',
+                input_type       => '.hello.Request',
+                output_type      => '.hello.Reply',
+                client_streaming => 0,
+                server_streaming => 0,
+            },
+        ],
+    );
+
+    $svc->full_name;   # 'hello.Greeter'
+    $svc->methods;     # arrayref of RPC-method hashrefs
+
+Services are parsed for completeness; this library does not dispatch RPCs.
+
 =head1 DESCRIPTION
 
 Models a C<ServiceDescriptorProto>: its name, fully-qualified name, RPC methods,

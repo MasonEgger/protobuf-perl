@@ -27,7 +27,7 @@ test:
 # Static analysis with Perl::Critic (gentle policy).
 lint:
     @if command -v perlcritic >/dev/null 2>&1; then \
-        echo "==> perlcritic --gentle lib t"; perlcritic --gentle lib t; \
+        echo "==> perlcritic --gentle lib bin t"; perlcritic --gentle lib bin t; \
     else \
         echo "==> perlcritic not installed; skipping lint"; \
     fi

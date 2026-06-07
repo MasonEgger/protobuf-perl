@@ -70,6 +70,27 @@ __END__
 
 Protobuf::Schema::Message - A message type within a schema
 
+=head1 SYNOPSIS
+
+    use Protobuf::Schema::Message;
+    use Protobuf::Schema::Field;
+
+    my $msg = Protobuf::Schema::Message->new(
+        name      => 'Greeting',
+        full_name => 'hello.Greeting',
+        fields    => [
+            Protobuf::Schema::Field->new(
+                name => 'text', number => 1, type => 'string',
+            ),
+        ],
+    );
+
+    $msg->full_name;   # 'hello.Greeting'
+    $msg->fields;      # arrayref of Protobuf::Schema::Field
+
+Message objects are usually produced by L<Protobuf::Parser> or
+L<Protobuf::DescriptorSet> and registered into a L<Protobuf::Schema>.
+
 =head1 DESCRIPTION
 
 Models a C<DescriptorProto>: name, fully-qualified name, fields, oneofs, nested

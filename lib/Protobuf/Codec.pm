@@ -143,56 +143,56 @@ my %SCALAR_TYPE = do {
         return $n;
     };
 
-    my $d_varint   = sub ($b) { Protobuf::Wire::decode_varint($b) };
-    my $d_signed   = sub ($b) { $decode_signed_varint->($b) };
+    my $d_varint   = sub ($buf) { Protobuf::Wire::decode_varint($buf) };
+    my $d_signed   = sub ($buf) { $decode_signed_varint->($buf) };
     # 32-bit varint decoders wrap to width after reading the full varint.
-    my $d_i32var   = sub ($b) {
-        my ( undef, $rest ) = Protobuf::Wire::decode_varint($b);
-        my ($v) = $decode_signed_varint->($b);
+    my $d_i32var   = sub ($buf) {
+        my ( undef, $rest ) = Protobuf::Wire::decode_varint($buf);
+        my ($v) = $decode_signed_varint->($buf);
         return ( $wrap_i32->($v), $rest );
     };
-    my $d_u32var   = sub ($b) {
-        my ( $v, $rest ) = Protobuf::Wire::decode_varint($b);
+    my $d_u32var   = sub ($buf) {
+        my ( $v, $rest ) = Protobuf::Wire::decode_varint($buf);
         return ( $wrap_u32->($v), $rest );
     };
-    my $d_zigzag32 = sub ($b) {
+    my $d_zigzag32 = sub ($buf) {
         # sint32: an over-width varint truncates to 32 bits BEFORE zigzag
         # decoding (protoc semantics). Mask the raw varint to its low 32 bits,
         # then apply the zigzag transform in 32-bit space.
-        my ( $raw, $rest ) = Protobuf::Wire::decode_varint($b);
+        my ( $raw, $rest ) = Protobuf::Wire::decode_varint($buf);
         my $u = $wrap_u32->($raw);
         my $v = ( $u >> 1 ) ^ -( $u & 1 );
         return ( $wrap_i32->($v), $rest );
     };
-    my $d_zigzag64 = sub ($b) {
-        my ( undef, $rest ) = Protobuf::Wire::decode_varint($b);
-        return ( Protobuf::Wire::decode_zigzag64($b), $rest );
+    my $d_zigzag64 = sub ($buf) {
+        my ( undef, $rest ) = Protobuf::Wire::decode_varint($buf);
+        return ( Protobuf::Wire::decode_zigzag64($buf), $rest );
     };
     # bool normalizes any non-zero varint to 1 and zero to 0.
-    my $d_bool     = sub ($b) {
-        my ( $v, $rest ) = Protobuf::Wire::decode_varint($b);
+    my $d_bool     = sub ($buf) {
+        my ( $v, $rest ) = Protobuf::Wire::decode_varint($buf);
         return ( ( $v ? 1 : 0 ), $rest );
     };
-    my $d_fixed32  = sub ($b) { Protobuf::Wire::decode_fixed32($b) };
-    my $d_fixed64  = sub ($b) { Protobuf::Wire::decode_fixed64($b) };
+    my $d_fixed32  = sub ($buf) { Protobuf::Wire::decode_fixed32($buf) };
+    my $d_fixed64  = sub ($buf) { Protobuf::Wire::decode_fixed64($buf) };
     # sfixed32/sfixed64 are SIGNED: the wire carries an unsigned little-endian
     # value, but a high bit set means a negative two's-complement integer.
-    my $d_sfixed32 = sub ($b) {
-        my ( $u, $rest ) = Protobuf::Wire::decode_fixed32($b);
+    my $d_sfixed32 = sub ($buf) {
+        my ( $u, $rest ) = Protobuf::Wire::decode_fixed32($buf);
         $u -= 2**32 if $u >= 2**31;
         return ( $u, $rest );
     };
-    my $d_sfixed64 = sub ($b) {
-        my ( $u, $rest ) = Protobuf::Wire::decode_fixed64($b);
+    my $d_sfixed64 = sub ($buf) {
+        my ( $u, $rest ) = Protobuf::Wire::decode_fixed64($buf);
         my $big = ref $u ? $u->copy : Math::BigInt->new("$u");
         $big->bsub($TWO_64) if $big->bcmp($TWO_63) >= 0;
         return ( $normalize_int->($big), $rest );
     };
-    my $d_float    = sub ($b) { Protobuf::Wire::decode_float($b) };
-    my $d_double   = sub ($b) { Protobuf::Wire::decode_double($b) };
+    my $d_float    = sub ($buf) { Protobuf::Wire::decode_float($buf) };
+    my $d_double   = sub ($buf) { Protobuf::Wire::decode_double($buf) };
     # Length-delimited: a varint byte-count prefix, then that many raw bytes.
-    my $d_len      = sub ($b) {
-        my ( $n, $rest ) = Protobuf::Wire::decode_varint($b);
+    my $d_len      = sub ($buf) {
+        my ( $n, $rest ) = Protobuf::Wire::decode_varint($buf);
         $n = $n->numify if ref $n;
         if ( length($rest) < $n ) {
             Protobuf::Exception::Wire::Truncated->throw(
@@ -203,8 +203,8 @@ my %SCALAR_TYPE = do {
     };
     # `string`: the LEN block holds UTF-8 octets; decode them back to a Perl
     # character string so callers get text, mirroring the $str encoder.
-    my $d_str      = sub ($b) {
-        my ( $bytes, $rest ) = $d_len->($b);
+    my $d_str      = sub ($buf) {
+        my ( $bytes, $rest ) = $d_len->($buf);
         return ( Encode::decode( 'UTF-8', $bytes ), $rest );
     };
 

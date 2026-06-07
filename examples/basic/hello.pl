@@ -7,17 +7,17 @@ use warnings;
 use FindBin ();
 use lib "$FindBin::Bin/../../lib";
 
-use Proto3::Parser;
-use Proto3::Codec;
+use Protobuf::Parser;
+use Protobuf::Codec;
 
 # 1. Parse the .proto file (searching the example directory as an include root)
 #    and resolve cross-type references into a single schema.
-my $parser = Proto3::Parser->new( include_paths => [$FindBin::Bin] );
+my $parser = Protobuf::Parser->new( include_paths => [$FindBin::Bin] );
 my $schema = $parser->parse_with_imports('hello.proto');
 $schema->resolve;
 
 # 2. A codec is the wire + JSON workhorse, bound to the resolved schema.
-my $codec = Proto3::Codec->new( schema => $schema );
+my $codec = Protobuf::Codec->new( schema => $schema );
 
 # The message value is a plain hashref keyed by proto field name.
 my %greeting = (

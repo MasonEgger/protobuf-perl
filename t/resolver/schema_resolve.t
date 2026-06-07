@@ -81,6 +81,58 @@ use Protobuf::Schema::Field;
 }
 
 # ---------------------------------------------------------------------------
+# Native-parser case: the parser cannot tell enum from message syntactically, so
+# it tags every named-type field `type => 'message'`. When such a field resolves
+# to a Schema::Enum, resolve must correct its type to 'enum' (from the resolved
+# ref's class) so the codec sends it down the varint path, not the embedded-
+# message path. A field that resolves to a Schema::Message stays 'message'.
+{
+    my $color = Protobuf::Schema::Enum->new(
+        name => 'Color', full_name => 'foo.Color',
+        values => [ { name => 'UNKNOWN', number => 0 } ],
+    );
+    my $inner = Protobuf::Schema::Message->new(
+        name => 'Inner', full_name => 'foo.Inner', fields => [],
+    );
+
+    # Both fields are tagged 'message' exactly as Grammar::_parse_field_type emits.
+    my $enum_field = Protobuf::Schema::Field->new(
+        name => 'c', number => 1, type => 'message', type_name => 'foo.Color',
+    );
+    my $msg_field = Protobuf::Schema::Field->new(
+        name => 'i', number => 2, type => 'message', type_name => 'foo.Inner',
+    );
+    my $holder = Protobuf::Schema::Message->new(
+        name => 'Holder', full_name => 'foo.Holder',
+        fields => [ $enum_field, $msg_field ],
+    );
+
+    my $file = Protobuf::Schema::File->new(
+        name     => 'mix.proto',
+        package  => 'foo',
+        messages => [ $inner, $holder ],
+        enums    => [$color],
+    );
+    my $schema = Protobuf::Schema->new;
+    $schema->add_file($file);
+
+    ok( $enum_field->is_message,
+        'enum-typed field tagged message before resolve (parser behavior)' );
+
+    $schema->resolve;
+
+    is( $enum_field->type, 'enum',
+        'resolve corrects an enum-resolved field to type enum' );
+    ok( $enum_field->is_enum,     'corrected field reads as enum' );
+    ok( !$enum_field->is_message, 'corrected field no longer reads as message' );
+    is( $enum_field->type_ref, $color, 'corrected field still links the Enum' );
+
+    is( $msg_field->type, 'message',
+        'a field resolving to a Message keeps type message' );
+    ok( $msg_field->is_message, 'message field still reads as message' );
+}
+
+# ---------------------------------------------------------------------------
 # Scalar fields are left alone: resolve only touches message/enum-typed fields.
 {
     my $scalar_field = Protobuf::Schema::Field->new(

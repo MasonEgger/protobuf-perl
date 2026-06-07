@@ -45,6 +45,13 @@ __END__
 
 Protobuf::Class::Accessor - Accessor-name computation for generated classes
 
+=head1 SYNOPSIS
+
+    use Protobuf::Class::Accessor;
+
+    Protobuf::Class::Accessor::accessor_name('package');   # 'package_'
+    Protobuf::Class::Accessor::accessor_name('encoding');  # 'encoding'
+
 =head1 DESCRIPTION
 
 Maps a proto field name to the base name used for its generated accessors.

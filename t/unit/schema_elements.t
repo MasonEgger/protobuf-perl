@@ -101,6 +101,23 @@ use Protobuf::Exception;
     ok( $map->is_map, 'map_entry set -> is_map' );
 }
 
+# --- 6.4b: set_type corrects the type post-construction --------------------
+# The native parser tags every named-type reference as 'message'; the resolver
+# rewrites it to 'enum' once it sees the resolved target is an enum. set_type is
+# that narrow mutation (mirroring set_type_ref) and must flip the predicates.
+{
+    my $field = Protobuf::Schema::Field->new(
+        name => 'c', number => 1, type => 'message', type_name => '.pkg.Color',
+    );
+    ok( $field->is_message, 'parsed named-type field starts as message' );
+
+    my $ret = $field->set_type('enum');
+    is( $ret,         $field,  'set_type returns the field for chaining' );
+    is( $field->type, 'enum',  'set_type updates the type string' );
+    ok( $field->is_enum,      'after set_type the field reads as enum' );
+    ok( !$field->is_message,  'after set_type the field is no longer a message' );
+}
+
 # --- 6.5: is_packed only true for packable repeated scalar ------------------
 {
     # packed flag set, repeated, packable scalar (int32) -> true

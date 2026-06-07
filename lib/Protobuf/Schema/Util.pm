@@ -36,6 +36,19 @@ __END__
 
 Protobuf::Schema::Util - Construction-time validation helpers for the schema model
 
+=head1 SYNOPSIS
+
+    use Protobuf::Schema::Util;
+
+    # Returns 1 when every key is unique; throws on the first repeat.
+    Protobuf::Schema::Util::assert_unique(
+        [ 1, 2, 3 ],
+        'Protobuf::Exception::Schema::DuplicateField',
+        'duplicate field number %s',
+    );
+
+Internal helper; not part of the public API.
+
 =head1 DESCRIPTION
 
 Internal helper used by the C<Protobuf::Schema::*> element classes to enforce

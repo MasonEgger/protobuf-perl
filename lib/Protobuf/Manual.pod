@@ -1,0 +1,314 @@
+# ABOUTME: Protobuf::Manual — the task-oriented guide to using the Protobuf
+# distribution: schemas, the value data model, wire/JSON codec, classes, editions.
+
+=encoding utf-8
+
+=head1 NAME
+
+Protobuf::Manual - a guide to using the Protobuf distribution
+
+=head1 DESCRIPTION
+
+L<Protobuf> is a pure-Perl implementation of Protocol Buffers. This manual is the
+task-oriented guide: how to get a schema, how message values are represented in
+Perl, and how to move them across the wire and through JSON. For the reference
+documentation of any one piece, see that module's own POD (linked throughout).
+
+Three ideas carry the whole library:
+
+=over 4
+
+=item * A B<schema> (L<Protobuf::Schema>) is a registry of message, enum, and
+service definitions, indexed by fully-qualified name. You build one, then call
+C<< ->resolve >> to link every cross-type reference.
+
+=item * A B<message value> is a plain Perl B<hashref keyed by proto field name>.
+There is no special object required to hold data — C<< { user_id => 42 } >> is a
+complete message value. (Generated classes are an optional convenience on top of
+this; see L</"WORKING WITH GENERATED CLASSES">.)
+
+=item * A B<codec> (L<Protobuf::Codec>) is bound to a resolved schema and turns
+those hashrefs into wire bytes or JSON, and back.
+
+=back
+
+=head1 QUICK START
+
+Parse a schema from C<.proto> source, resolve it, bind a codec, and round-trip a
+value on the wire and as JSON:
+
+    use v5.38;
+    use Protobuf::Parser;
+    use Protobuf::Codec;
+
+    my $file = Protobuf::Parser->new->parse_string('demo.proto', <<~'PROTO');
+        syntax = "proto3";
+        package demo;
+        message Point { int32 x = 1; int32 y = 2; repeated string tags = 3; }
+        PROTO
+
+    my $schema = Protobuf::Schema->new;
+    $schema->add_file($file)->resolve;
+
+    my $codec = Protobuf::Codec->new( schema => $schema );
+
+    my $value = { x => 3, y => 4, tags => [ 'a', 'b' ] };
+
+    my $bytes = $codec->encode( 'demo.Point', $value );
+    my $back  = $codec->decode( 'demo.Point', $bytes );   # { x => 3, y => 4, tags => [...] }
+
+    my $json  = $codec->encode_json( 'demo.Point', $value );  # {"tags":["a","b"],"x":3,"y":4}
+    my $obj   = $codec->decode_json( 'demo.Point', $json );
+
+A runnable version of this lives in F<examples/basic/hello.pl> in the
+distribution.
+
+=head1 THE DATA MODEL
+
+A message value is a hashref whose keys are proto field names. Each proto type
+maps to a Perl value as follows:
+
+    proto type                Perl value
+    -----------------------   --------------------------------------------------
+    int32/int64/uint*/sint*   a number (large 64-bit values may be Math::BigInt)
+    fixed*/sfixed*            a number
+    float/double              a number (NaN/Inf round-trip on the wire)
+    bool                      1 or 0 on the wire; true/false in JSON
+    string                    a character string (decoded UTF-8)
+    bytes                     a raw octet string (no encoding applied)
+    enum                      the integer enumerator value
+    message                   a nested hashref (recurse)
+    repeated <T>              an arrayref of <T> values
+    map<K,V>                  a hashref of K => V
+    oneof                     set exactly one member field's key in the hashref
+
+=head2 Presence and defaults
+
+proto3 implicit-presence singular scalar fields are B<omitted from the wire when
+they hold the type default> (0, empty string, false). On decode, such a field
+that never appeared comes back as its default. Fields with explicit presence —
+proto3 C<optional>, oneof members, and proto2/editions explicit fields — are
+written whenever set (even at the default) and stay B<absent> from the decoded
+hashref when they were never on the wire. The codec derives this per field from
+the resolved feature set; see L<Protobuf::Schema::Field/presence>.
+
+=head2 oneof
+
+A oneof is represented by simply putting the chosen member's key in the value
+hashref. On decode the last member seen on the wire wins, and only that member's
+key is present in the result.
+
+=head1 GETTING A SCHEMA
+
+There are three ways to obtain a schema. Whichever you use, call C<< ->resolve >>
+before handing it to a codec (L<Protobuf::DescriptorSet> returns one already
+resolved).
+
+=head2 1. Parse C<.proto> source (L<Protobuf::Parser>)
+
+For schemas you control as text. C<parse_with_imports> walks C<import>
+statements across an include path and returns a whole schema:
+
+    use Protobuf::Parser;
+
+    my $parser = Protobuf::Parser->new( include_paths => [ 'protos' ] );
+    my $schema = $parser->parse_with_imports('demo.proto');
+    $schema->resolve;
+
+Use C<parse_string($name, $source)> for source held in a string, and
+C<parse_file($relative_path)> for a single file resolved against the include
+path. See L<Protobuf::Parser>.
+
+=head2 2. Load a protoc descriptor set (L<Protobuf::DescriptorSet>)
+
+For real-world schemas, the most robust route is to let C<protoc> do the parsing
+and hand the result to this library as a binary C<FileDescriptorSet>:
+
+    protoc --descriptor_set_out=all.fds --include_imports -I protos protos/*.proto
+
+    use Protobuf::DescriptorSet;
+    my $schema = Protobuf::DescriptorSet->load_file('all.fds');   # already resolved
+    my $codec  = Protobuf::Codec->new( schema => $schema );
+
+C<load_string($bytes)> takes the descriptor-set bytes directly. This path uses
+C<protoc>'s own front end, so it covers everything protoc accepts — including
+enums, extensions, and editions.
+
+=head2 3. Build a schema in Perl
+
+For programmatic construction or testing, assemble the model objects directly
+and register them:
+
+    use Protobuf::Schema;
+    use Protobuf::Schema::File;
+    use Protobuf::Schema::Message;
+    use Protobuf::Schema::Field;
+
+    my $msg = Protobuf::Schema::Message->new(
+        name => 'Point', full_name => 'demo.Point',
+        fields => [
+            Protobuf::Schema::Field->new( name => 'x', number => 1, type => 'int32' ),
+            Protobuf::Schema::Field->new( name => 'y', number => 2, type => 'int32' ),
+        ],
+    );
+    my $file = Protobuf::Schema::File->new(
+        name => 'demo.proto', package => 'demo', messages => [ $msg ],
+    );
+
+    my $schema = Protobuf::Schema->new;
+    $schema->add_file($file)->resolve;
+
+See L<Protobuf::Schema::Message>, L<Protobuf::Schema::Field>,
+L<Protobuf::Schema::Enum>, L<Protobuf::Schema::Oneof>, and
+L<Protobuf::Schema::File>.
+
+=head1 ENCODING AND DECODING ON THE WIRE
+
+A codec bound to a resolved schema encodes and decodes by fully-qualified
+message name:
+
+    my $codec = Protobuf::Codec->new( schema => $schema );
+
+    my $bytes = $codec->encode( 'demo.Order', {
+        id         => 'A1',
+        items      => [ { name => 'Perl Book', price => 30 } ],  # repeated message
+        quantities => { apples => 3, pears => 2 },               # map<string,int32>
+        paid       => 1,                                         # bool
+    } );
+
+    my $value = $codec->decode( 'demo.Order', $bytes );
+
+Nested messages, repeated fields, and maps recurse through the same entry points,
+so arbitrarily deep trees round-trip. Unknown field numbers encountered on decode
+are skipped by their wire type and left out of the result. An unknown message
+name raises L<Protobuf::Exception::Codec::UnknownType>; a value of the wrong
+shape for its field raises L<Protobuf::Exception::Codec::TypeMismatch>. See
+L<Protobuf::Codec>.
+
+=head1 JSON
+
+The same value hashref encodes to and decodes from canonical proto3 JSON:
+
+    my $json  = $codec->encode_json( 'demo.Order', $value );
+    my $value = $codec->decode_json( 'demo.Order', $json );
+
+Encoding follows the proto3 JSON mapping: field names become C<lowerCamelCase>,
+64-bit integers become strings, C<bytes> become base64, enums become their
+enumerator name, and implicit-default fields are omitted. Decoding is lenient: it
+accepts both C<camelCase> and C<snake_case> keys, both string and number forms
+for 64-bit integers, and both the name and the number for enum values.
+
+C<encode_json> accepts options C<enums_as_ints>, C<preserve_field_names> (emit
+proto field names instead of camelCase), and C<emit_defaults> (include
+implicit-default fields). C<decode_json> accepts C<reject_unknown_fields>. See
+L<Protobuf::JSON> for the full rules.
+
+=head1 WELL-KNOWN TYPES
+
+The C<google.protobuf.*> well-known types encode on the wire like any other
+message, but several (C<Timestamp>, C<Duration>, C<Struct>, C<Any>, the wrapper
+types, ...) have special JSON forms. Register their schemas into your schema and
+the JSON layer handles the special forms automatically:
+
+    use Protobuf::WKT;
+    Protobuf::WKT->register($schema);
+
+See L<Protobuf::WKT>, L<Protobuf::WKT::Timestamp>, and L<Protobuf::WKT::Duration>.
+
+=head1 WORKING WITH GENERATED CLASSES
+
+Hashrefs are the core data model; generated classes are an ergonomic layer over
+them, giving typed accessors plus C<encode>/C<decode> as instance and class
+methods.
+
+=head2 At runtime (L<Protobuf::Class::Generator>)
+
+Build a class from a resolved C<Schema::Message> into a package of your choosing:
+
+    use Protobuf::Class::Generator;
+
+    Protobuf::Class::Generator->build(
+        schema         => $schema,
+        message        => $schema->message('demo.Point'),
+        target_package => 'Demo::Point',
+    );
+
+    my $p = Demo::Point->new({ x => 3, y => 4, tags => [ 'a', 'b' ] });
+    $p->set_x(7)->set_y(9);          # chainable setters
+    $p->x;                           # 7
+    $p->to_hashref;                  # { x => 7, y => 9, tags => [...] }
+    Demo::Point->descriptor;         # the Protobuf::Schema::Message
+
+    my $bytes = $p->encode;          # wire bytes
+    my $back  = Demo::Point->decode($bytes);   # a Demo::Point instance
+
+A field whose name collides with a Perl keyword gets a trailing underscore on its
+accessor (e.g. C<package_>); see L<Protobuf::Class::Accessor>.
+
+=head2 Ahead of time (C<protobuf-gen-perl>)
+
+To commit generated modules to a project, render one C<.pm> per C<.proto> with
+the bundled generator:
+
+    protobuf-gen-perl \
+        --include protos \
+        --output  lib \
+        --package-prefix My::Api \
+        demo.proto
+
+Each emitted module reconstructs its schema statically and installs its classes
+through the same L<Protobuf::Class::Generator> path, so it carries no parser or
+descriptor-set dependency at runtime and cannot drift from the runtime behavior.
+See L<Protobuf::Class::Codegen>.
+
+=head1 PROTO2, PROTO3, AND EDITIONS
+
+Despite the name, the library is not limited to proto3. It passes the Google
+conformance suite at protobuf v34 across B<proto2>, B<proto3>, and
+B<editions 2023>. The syntax/edition dimension is modeled as a resolved
+B<feature set> (L<Protobuf::Schema::Features>) covering field presence, enum
+openness (open vs. closed), repeated encoding (packed vs. expanded), message
+encoding (length-prefixed vs. delimited/group), and UTF-8 validation. Each
+edition supplies defaults; a file, message, enum, or field may override them, and
+C<< $schema->resolve >> folds the layers into one effective feature set per
+element. The codec reads that resolved set rather than branching on syntax, so
+the same encode/decode code serves all three.
+
+=head1 ERROR HANDLING
+
+Failures throw exception objects under L<Protobuf::Exception> (parse, resolve,
+wire, codec, and JSON families), each with a C<message>. Catch them with an
+C<eval>/C<try> and inspect C<< $@->isa(...) >>:
+
+    use Protobuf::Codec;
+    use Protobuf::Exception;
+
+    my $value = eval { $codec->decode('demo.Point', $bytes) };
+    if ( my $err = $@ ) {
+        die "decode failed: " . $err->message
+            if ref $err && $err->isa('Protobuf::Exception');
+        die $err;
+    }
+
+=head1 CONFORMANCE
+
+The distribution ships a conformance testee, C<protobuf-conformance>, that speaks
+the Google C<conformance_test_runner> stdio protocol, plus the harness under
+F<t/conformance/> that gates CI against the v34 suite. See
+L<Protobuf::Conformance>.
+
+=head1 SEE ALSO
+
+L<Protobuf>, L<Protobuf::Parser>, L<Protobuf::DescriptorSet>, L<Protobuf::Schema>,
+L<Protobuf::Codec>, L<Protobuf::JSON>, L<Protobuf::WKT>,
+L<Protobuf::Class::Generator>, L<Protobuf::Class::Codegen>,
+L<Protobuf::Schema::Features>, L<Protobuf::Exception>.
+
+The Protocol Buffers language and wire format themselves are documented at
+L<https://protobuf.dev>.
+
+=head1 LICENSE
+
+This software is licensed under the MIT license. See the F<LICENSE> file.
+
+=cut
