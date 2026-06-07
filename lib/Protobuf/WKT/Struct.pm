@@ -266,7 +266,7 @@ classes:
 
 =over 4
 
-=item * L<google.protobuf.Struct|/Protobuf::WKT::Struct> — a C<map<string, Value>>;
+=item * C<google.protobuf.Struct> — a C<map<string, Value>>;
 JSON form is a JSON object.
 
 =item * C<Protobuf::WKT::Value> — the C<oneof> over null/number/string/bool/struct/

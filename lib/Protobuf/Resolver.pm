@@ -162,7 +162,7 @@ C<foo.Outer.Bar>, C<foo.Bar>, then C<Bar>.
 =item candidate_names($type_name, $current_package, $current_message)
 
 A pure function (not a method) returning the ordered list of fully-qualified
-candidate names that L</resolve> will try, innermost scope first. Exposed so the
+candidate names that C<resolve> will try, innermost scope first. Exposed so the
 exact search order is directly assertable in tests.
 
 =back
