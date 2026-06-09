@@ -34,8 +34,10 @@ my %LABEL = ( repeated => 1, optional => 1 );
 # proto2-only constructs proto3 forbids (spec §4.4). These tokenize as plain
 # identifiers (they are not proto3 keywords), so the grammar checks for them
 # explicitly and reports which one was used. `optional` is intentionally absent:
-# proto3 3.15+ accepts it for explicit presence.
-my %PROTO2_FORBIDDEN = map { $_ => 1 } qw( required group extensions extend );
+# proto3 3.15+ accepts it for explicit presence. `extend` is intentionally
+# absent too: proto3 allows it for declaring custom options (extending the
+# google.protobuf.*Options messages), so the grammar parses extend blocks.
+my %PROTO2_FORBIDDEN = map { $_ => 1 } qw( required group extensions );
 
 # Bracketed field options proto3 forbids. A scalar default value is a proto2-only
 # construct; proto3 fixes scalar defaults to the zero value.
@@ -106,11 +108,38 @@ sub _is_punct {
     return $token && $token->{type} eq 'punct' && $token->{value} eq $char;
 }
 
+# True when the NEXT token (one past current) is punctuation equal to $char.
+# Used for one-token lookahead disambiguation (e.g. an enum value named
+# `option` — `option = 0;` — vs an `option ... = ...;` statement).
+sub _next_is_punct {
+    my ( $self, $char ) = @_;
+    my $token = $self->_peek(1);
+    return $token && $token->{type} eq 'punct' && $token->{value} eq $char;
+}
+
 # True when the current token is the keyword $word.
 sub _is_keyword {
     my ( $self, $word ) = @_;
     my $token = $self->_peek;
     return $token && $token->{type} eq 'keyword' && $token->{value} eq $word;
+}
+
+# Consume and return a NAME token: an identifier or any keyword. proto3 keywords
+# are contextual (spec §4.4) — `message`, `service`, `map`, etc. are reserved
+# only in their structural position and are valid field/message/enum-value/rpc/
+# oneof names everywhere else. The grammar still recognizes keywords positionally
+# (a leading `message`/`enum`/`oneof`/... at statement start dispatches), so a
+# keyword only reaches here when a plain name is expected.
+sub _expect_name {
+    my ($self) = @_;
+    my $token = $self->_peek;
+    if ( $token
+        && ( $token->{type} eq 'ident' || $token->{type} eq 'keyword' ) )
+    {
+        return $self->_next;
+    }
+    my $found = $token ? "$token->{type} '$token->{value}'" : 'end of input';
+    $self->_error( "expected a name but found $found", $token );
 }
 
 sub _error {
@@ -145,6 +174,7 @@ sub parse {
     my @enums;
     my @services;
     my @imports;
+    my @extensions;
     my %options;
     while ( !$self->_at_end ) {
         if ( $self->_is_keyword('package') ) {
@@ -166,6 +196,9 @@ sub parse {
         elsif ( $self->_is_keyword('service') ) {
             push @services, $self->_parse_service;
         }
+        elsif ( $self->_is_keyword('extend') ) {
+            push @extensions, $self->_parse_extend( $self->{package} );
+        }
         else {
             my $token = $self->_peek;
             $self->_error(
@@ -174,14 +207,15 @@ sub parse {
     }
 
     return Protobuf::Schema::File->new(
-        name     => $self->{file_name},
-        package  => $self->{package},
-        syntax   => 'proto3',
-        messages => \@messages,
-        enums    => \@enums,
-        services => \@services,
-        imports  => \@imports,
-        options  => \%options,
+        name       => $self->{file_name},
+        package    => $self->{package},
+        syntax     => 'proto3',
+        messages   => \@messages,
+        enums      => \@enums,
+        services   => \@services,
+        imports    => \@imports,
+        extensions => \@extensions,
+        options    => \%options,
     );
 }
 
@@ -230,20 +264,29 @@ sub _parse_syntax {
     return;
 }
 
-# package a.b.c;
+# package a.b.c; — at most one per file (spec §4.4). A second declaration is a
+# user error protoc rejects ("Package already set").
 sub _parse_package {
     my ($self) = @_;
+    my $token = $self->_peek;
     $self->_expect( 'keyword', 'package' );
+    $self->_error( 'package already set; only one package declaration is allowed',
+        $token )
+        if length $self->{package};
     $self->{package} = $self->_parse_dotted_name;
     $self->_expect( 'punct', ';' );
     return;
 }
 
-# A dotted name token (fullident) or a single ident.
+# A dotted name token (fullident), a single ident, or a contextual keyword used
+# as a name (e.g. a type reference or package component named like a keyword).
 sub _parse_dotted_name {
     my ($self) = @_;
     my $token = $self->_peek;
-    if ( $token && ( $token->{type} eq 'fullident' || $token->{type} eq 'ident' ) )
+    if ( $token
+        && (   $token->{type} eq 'fullident'
+            || $token->{type} eq 'ident'
+            || $token->{type} eq 'keyword' ) )
     {
         return $self->_next->{value};
     }
@@ -256,7 +299,7 @@ sub _parse_dotted_name {
 sub _parse_message {
     my ( $self, $scope ) = @_;
     $self->_expect( 'keyword', 'message' );
-    my $name = $self->_expect('ident')->{value};
+    my $name = $self->_expect_name->{value};
     my $full_name = $self->_full_name( $scope, $name );
 
     $self->_expect( 'punct', '{' );
@@ -267,6 +310,7 @@ sub _parse_message {
     my @nested_enums;
     my @reserved_numbers;
     my @reserved_names;
+    my @extensions;
     my %options;
 
     until ( $self->_is_punct('}') ) {
@@ -295,6 +339,9 @@ sub _parse_message {
         elsif ( $self->_is_keyword('reserved') ) {
             $self->_parse_reserved( \@reserved_numbers, \@reserved_names );
         }
+        elsif ( $self->_is_keyword('extend') ) {
+            push @extensions, $self->_parse_extend($full_name);
+        }
         else {
             push @fields, $self->_parse_field;
         }
@@ -310,6 +357,7 @@ sub _parse_message {
         nested_enums     => \@nested_enums,
         reserved_numbers => \@reserved_numbers,
         reserved_names   => \@reserved_names,
+        extensions       => \@extensions,
         options          => \%options,
     );
 }
@@ -318,7 +366,7 @@ sub _parse_message {
 sub _parse_enum {
     my ( $self, $scope ) = @_;
     $self->_expect( 'keyword', 'enum' );
-    my $name = $self->_expect('ident')->{value};
+    my $name = $self->_expect_name->{value};
     my $full_name = $self->_full_name( $scope, $name );
 
     $self->_expect( 'punct', '{' );
@@ -328,13 +376,16 @@ sub _parse_enum {
         $self->_error('unexpected end of input in enum body')
             if $self->_at_end;
 
-        if ( $self->_is_keyword('option') ) {
+        # `option` introduces an option statement only when it is NOT immediately
+        # an enum value: `option allow_alias = true;` vs a value literally named
+        # `option` (`option = 0;`). The lookahead at the `=` disambiguates.
+        if ( $self->_is_keyword('option') && !$self->_next_is_punct('=') ) {
             my ( $opt_name, $opt_value ) = $self->_parse_option;
             $allow_alias = $opt_value ? 1 : 0 if $opt_name eq 'allow_alias';
             next;
         }
 
-        my $value_name = $self->_expect('ident')->{value};
+        my $value_name = $self->_expect_name->{value};
         $self->_expect( 'punct', '=' );
         my $number = $self->_expect('int')->{value};
         $self->_expect( 'punct', ';' );
@@ -355,7 +406,7 @@ sub _parse_enum {
 sub _parse_service {
     my ($self) = @_;
     $self->_expect( 'keyword', 'service' );
-    my $name = $self->_expect('ident')->{value};
+    my $name = $self->_expect_name->{value};
     my $full_name = $self->_full_name( undef, $name );
 
     $self->_expect( 'punct', '{' );
@@ -394,7 +445,7 @@ sub _parse_service {
 sub _parse_rpc {
     my ($self) = @_;
     $self->_expect( 'keyword', 'rpc' );
-    my $name = $self->_expect('ident')->{value};
+    my $name = $self->_expect_name->{value};
 
     my ( $client_streaming, $input_type )  = $self->_parse_rpc_type;
     $self->_expect( 'keyword', 'returns' );
@@ -437,15 +488,80 @@ sub _parse_rpc_type {
     return ( $streaming, $type );
 }
 
-# option name = value; — returns ($name, $value). Used for enum allow_alias.
+# option name = value; — returns ($name, $value). The name may be a plain
+# (dotted) identifier or a custom-option name in parentheses, optionally with a
+# trailing field path: option (foo.bar).baz = ...;. The value may be a scalar,
+# adjacent-concatenated strings, or an aggregate { ... } (returned as a hashref).
 sub _parse_option {
     my ($self) = @_;
     $self->_expect( 'keyword', 'option' );
-    my $name = $self->_parse_dotted_name;
+    my $name = $self->_parse_option_name;
     $self->_expect( 'punct', '=' );
-    my $value = $self->_next->{value};
+    my $value = $self->_parse_option_value;
     $self->_expect( 'punct', ';' );
     return ( $name, $value );
+}
+
+# An option name: a plain (dotted) identifier, or a parenthesized custom-option
+# name — (foo.bar) — optionally followed by a .field.path. The parentheses are
+# preserved in the returned string so the option round-trips through serialize.
+sub _parse_option_name {
+    my ($self) = @_;
+    my $name;
+    if ( $self->_is_punct('(') ) {
+        $self->_next;
+        $name = '(' . $self->_parse_dotted_name . ')';
+        $self->_expect( 'punct', ')' );
+    }
+    else {
+        $name = $self->_parse_dotted_name;
+    }
+    while ( $self->_is_punct('.') ) {
+        $self->_next;
+        $name .= '.' . $self->_parse_dotted_name;
+    }
+    return $name;
+}
+
+# An option value: an aggregate { ... } (hashref), or a single scalar token with
+# adjacent string-literal concatenation ("a" "b" -> "ab", spec §4.4 / B-009).
+sub _parse_option_value {
+    my ($self) = @_;
+    return $self->_parse_aggregate_value if $self->_is_punct('{');
+
+    my $token = $self->_next;
+    my $value = $token->{value};
+    if ( $token->{type} eq 'string' ) {
+        while ( my $next = $self->_peek ) {
+            last unless $next->{type} eq 'string';
+            $value .= $self->_next->{value};
+        }
+    }
+    return $value;
+}
+
+# An aggregate option value: { name: value name: value ... } used for nested
+# option messages (e.g. (google.api.http) = { get: "/v1" }). Entries are
+# whitespace-separated; commas and semicolons between them are tolerated, and the
+# `:` before a nested { } sub-message is optional (protoc syntax). Returns a
+# hashref; nested aggregates recurse.
+sub _parse_aggregate_value {
+    my ($self) = @_;
+    $self->_expect( 'punct', '{' );
+    my %aggregate;
+    until ( $self->_is_punct('}') ) {
+        $self->_error('unexpected end of input in aggregate option value')
+            if $self->_at_end;
+
+        my $key = $self->_parse_option_name;
+        $self->_next if $self->_is_punct(':');    # optional before a { } value
+        $aggregate{$key} = $self->_parse_option_value;
+
+        # Tolerate an optional separator between entries.
+        $self->_next if $self->_is_punct(',') || $self->_is_punct(';');
+    }
+    $self->_expect( 'punct', '}' );
+    return \%aggregate;
 }
 
 # oneof Name { type field = N; ... } — members are appended to @$fields with the
@@ -453,7 +569,7 @@ sub _parse_option {
 sub _parse_oneof {
     my ( $self, $scope, $fields, $index ) = @_;
     $self->_expect( 'keyword', 'oneof' );
-    my $name = $self->_expect('ident')->{value};
+    my $name = $self->_expect_name->{value};
 
     $self->_expect( 'punct', '{' );
     my @members;
@@ -485,9 +601,9 @@ sub _parse_map_field {
     my ( $value_type, $value_type_name ) = $self->_parse_field_type;
     $self->_expect( 'punct', '>' );
 
-    my $name = $self->_expect('ident')->{value};
+    my $name = $self->_expect_name->{value};
     $self->_expect( 'punct', '=' );
-    my $number = $self->_expect('int')->{value};
+    my $number = $self->_parse_field_number;
     $self->_expect( 'punct', ';' );
 
     # MapEntry name is the CamelCase field name + 'Entry' (protoc convention).
@@ -597,9 +713,11 @@ sub _reject_proto2_construct {
 }
 
 # [label] type name = number;  — $oneof_index, when defined, marks the field as
-# a member of the oneof at that index (oneof members carry no label).
+# a member of the oneof at that index (oneof members carry no label). $extendee,
+# when defined, marks the field as an extension of that message (an `extend`
+# block member).
 sub _parse_field {
-    my ( $self, $oneof_index ) = @_;
+    my ( $self, $oneof_index, $extendee ) = @_;
 
     $self->_reject_proto2_construct;
 
@@ -610,9 +728,9 @@ sub _parse_field {
     }
 
     my ( $type, $type_name ) = $self->_parse_field_type;
-    my $name = $self->_expect('ident')->{value};
+    my $name = $self->_expect_name->{value};
     $self->_expect( 'punct', '=' );
-    my $number  = $self->_expect('int')->{value};
+    my $number  = $self->_parse_field_number;
     my $options = $self->_parse_field_options;
     $self->_expect( 'punct', ';' );
 
@@ -628,7 +746,45 @@ sub _parse_field {
         oneof_index => $oneof_index,
         json_name   => $json_name,
         options     => $options,
+        ( defined $extendee
+            ? ( is_extension => 1, extendee => $extendee )
+            : () ),
     );
+}
+
+# Parse and validate a field number (spec §4.4): 1..536870911, excluding the
+# 19000..19999 range the protobuf implementation reserves. 0, the reserved
+# range, and out-of-range values are rejected at parse time, matching protoc.
+sub _parse_field_number {
+    my ($self) = @_;
+    my $token  = $self->_peek;
+    my $number = $self->_expect('int')->{value};
+    if (   $number < 1
+        || $number > $MAX_FIELD_NUMBER
+        || ( $number >= 19_000 && $number <= 19_999 ) )
+    {
+        $self->_error( "invalid field number $number", $token );
+    }
+    return $number;
+}
+
+# extend TypeName { [label] type name = number; ... } — declares extension fields
+# of $extendee (proto3 allows this only for custom options). Returns the list of
+# extension Schema::Field objects, each tagged is_extension with its extendee.
+sub _parse_extend {
+    my ( $self, $scope ) = @_;
+    $self->_expect( 'keyword', 'extend' );
+    my $extendee = $self->_parse_dotted_name;
+    $self->_expect( 'punct', '{' );
+
+    my @extensions;
+    until ( $self->_is_punct('}') ) {
+        $self->_error('unexpected end of input in extend body')
+            if $self->_at_end;
+        push @extensions, $self->_parse_field( undef, $extendee );
+    }
+    $self->_expect( 'punct', '}' );
+    return @extensions;
 }
 
 # [ name = value, name = value, ... ] — an optional bracketed field-option list.
@@ -641,7 +797,7 @@ sub _parse_field_options {
     $self->_next;    # consume '['
     do {
         my $name_token = $self->_peek;
-        my $name       = $self->_parse_dotted_name;
+        my $name       = $self->_parse_option_name;
         if ( $FORBIDDEN_FIELD_OPTION{$name} ) {
             $self->_error(
                 "the `$name` field option is not allowed in proto3 "
@@ -649,7 +805,7 @@ sub _parse_field_options {
                 $name_token );
         }
         $self->_expect( 'punct', '=' );
-        $options{$name} = $self->_next->{value};
+        $options{$name} = $self->_parse_option_value;
     } while ( $self->_consume_comma );
     $self->_expect( 'punct', ']' );
 
@@ -667,8 +823,13 @@ sub _parse_field_type {
     {
         return ( $self->_next->{value}, undef );
     }
+    # A (dotted) identifier — or a non-scalar keyword used contextually as a type
+    # name — is a message-or-enum reference; message vs enum is settled later by
+    # the resolver, which models both as embedded messages on the wire.
     if ( $token
-        && ( $token->{type} eq 'ident' || $token->{type} eq 'fullident' ) )
+        && (   $token->{type} eq 'ident'
+            || $token->{type} eq 'fullident'
+            || $token->{type} eq 'keyword' ) )
     {
         return ( 'message', $self->_next->{value} );
     }

@@ -14,16 +14,17 @@ use Protobuf::Exception;
 # proto3 grammar keywords plus the scalar type names, per spec §4.4.
 my %KEYWORD = map { $_ => 1 } qw(
     syntax import weak public package option
-    enum message service rpc returns stream
+    enum message service rpc returns stream extend
     repeated optional reserved to max oneof map
     double float int32 int64 uint32 uint64
     sint32 sint64 fixed32 fixed64 sfixed32 sfixed64
     bool string bytes
 );
 
-# Single-character punctuation marks, each its own token.
+# Single-character punctuation marks, each its own token. `:` is the aggregate
+# option-value separator (e.g. option (http) = { get: "/v1" }).
 my %PUNCT = map { $_ => 1 }
-    ( '{', '}', '(', ')', '[', ']', '=', ',', ';', '<', '>', '.' );
+    ( '{', '}', '(', ')', '[', ']', '=', ',', ';', '<', '>', '.', ':' );
 
 # Simple single-character string escapes -> their decoded byte.
 my %SIMPLE_ESCAPE = (

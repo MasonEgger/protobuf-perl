@@ -13,6 +13,7 @@ class Protobuf::Schema::File {
     field $syntax   :param = 'proto3';
     field $imports  :param = [];            # arrayref of { path, kind } hashrefs
     field $options  :param = {};            # hashref of file-level options
+    field $extensions :param = [];          # arrayref of extension Schema::Field decls
     field $edition  :param = undef;         # 'proto2','proto3','2023'; derived from syntax
     field $features :param = {};            # explicit file-level feature overrides
 
@@ -32,6 +33,7 @@ class Protobuf::Schema::File {
     method syntax   { $syntax }
     method imports  { $imports }
     method options  { $options }
+    method extensions { $extensions }
     method edition  { $edition }
     method features { $features }
 }
@@ -110,6 +112,12 @@ An arrayref of C<< { path, kind } >> import hashrefs.
 =item C<options>
 
 A hashref of file-level options.
+
+=item C<extensions>
+
+An arrayref of file-scope extension L<Protobuf::Schema::Field> declarations (the
+members of top-level C<extend> blocks), each tagged C<is_extension> with its
+C<extendee>. Empty when the file declares no extensions.
 
 =back
 
