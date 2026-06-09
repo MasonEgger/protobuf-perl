@@ -177,7 +177,10 @@ sub parse {
     my @extensions;
     my %options;
     while ( !$self->_at_end ) {
-        if ( $self->_is_keyword('package') ) {
+        if ( $self->_is_punct(';') ) {    # empty statement at file scope
+            $self->_next;
+        }
+        elsif ( $self->_is_keyword('package') ) {
             $self->_parse_package;
         }
         elsif ( $self->_is_keyword('import') ) {
@@ -317,7 +320,10 @@ sub _parse_message {
         $self->_error('unexpected end of input in message body')
             if $self->_at_end;
 
-        if ( $self->_is_keyword('option') ) {
+        if ( $self->_is_punct(';') ) {    # empty statement (e.g. after a oneof)
+            $self->_next;
+        }
+        elsif ( $self->_is_keyword('option') ) {
             my ( $opt_name, $opt_value ) = $self->_parse_option;
             $options{$opt_name} = $opt_value;
         }
@@ -371,10 +377,21 @@ sub _parse_enum {
 
     $self->_expect( 'punct', '{' );
     my @values;
+    my @reserved_numbers;
+    my @reserved_names;
     my $allow_alias = 0;
     until ( $self->_is_punct('}') ) {
         $self->_error('unexpected end of input in enum body')
             if $self->_at_end;
+
+        # A bare `;` is a legal empty statement (spec emptyStatement).
+        if ( $self->_is_punct(';') ) { $self->_next; next; }
+
+        # `reserved` ranges/names, like a message's (spec §4.4).
+        if ( $self->_is_keyword('reserved') ) {
+            $self->_parse_reserved( \@reserved_numbers, \@reserved_names );
+            next;
+        }
 
         # `option` introduces an option statement only when it is NOT immediately
         # an enum value: `option allow_alias = true;` vs a value literally named
@@ -387,17 +404,21 @@ sub _parse_enum {
 
         my $value_name = $self->_expect_name->{value};
         $self->_expect( 'punct', '=' );
-        my $number = $self->_expect('int')->{value};
+        my $number  = $self->_expect('int')->{value};
+        my $options = $self->_parse_field_options;    # optional [opt = ...]
         $self->_expect( 'punct', ';' );
-        push @values, { name => $value_name, number => $number };
+        push @values,
+            { name => $value_name, number => $number, options => $options };
     }
     $self->_expect( 'punct', '}' );
 
     return Protobuf::Schema::Enum->new(
-        name        => $name,
-        full_name   => $full_name,
-        values      => \@values,
-        allow_alias => $allow_alias,
+        name             => $name,
+        full_name        => $full_name,
+        values           => \@values,
+        allow_alias      => $allow_alias,
+        reserved_numbers => \@reserved_numbers,
+        reserved_names   => \@reserved_names,
     );
 }
 
@@ -416,7 +437,10 @@ sub _parse_service {
         $self->_error('unexpected end of input in service body')
             if $self->_at_end;
 
-        if ( $self->_is_keyword('rpc') ) {
+        if ( $self->_is_punct(';') ) {    # empty statement between rpcs
+            $self->_next;
+        }
+        elsif ( $self->_is_keyword('rpc') ) {
             push @methods, $self->_parse_rpc;
         }
         elsif ( $self->_is_keyword('option') ) {
@@ -523,11 +547,14 @@ sub _parse_option_name {
     return $name;
 }
 
-# An option value: an aggregate { ... } (hashref), or a single scalar token with
-# adjacent string-literal concatenation ("a" "b" -> "ab", spec §4.4 / B-009).
+# An option value: an aggregate { ... } (hashref), a list [ ... ] (arrayref), or
+# a single scalar token with adjacent string-literal concatenation ("a" "b" ->
+# "ab", spec §4.4 / B-009). Lists hold repeated-field option values and may
+# contain aggregates (e.g. swagger `tags: [ {name: ...}, {name: ...} ]`).
 sub _parse_option_value {
     my ($self) = @_;
     return $self->_parse_aggregate_value if $self->_is_punct('{');
+    return $self->_parse_list_value      if $self->_is_punct('[');
 
     my $token = $self->_next;
     my $value = $token->{value};
@@ -538,6 +565,22 @@ sub _parse_option_value {
         }
     }
     return $value;
+}
+
+# A list option value: [ value, value, ... ] (comma-separated). Each element is a
+# recursive option value, so lists of aggregates work. Returns an arrayref.
+sub _parse_list_value {
+    my ($self) = @_;
+    $self->_expect( 'punct', '[' );
+    my @list;
+    until ( $self->_is_punct(']') ) {
+        $self->_error('unexpected end of input in list option value')
+            if $self->_at_end;
+        push @list, $self->_parse_option_value;
+        $self->_consume_comma;    # optional trailing comma tolerated
+    }
+    $self->_expect( 'punct', ']' );
+    return \@list;
 }
 
 # An aggregate option value: { name: value name: value ... } used for nested
@@ -603,7 +646,8 @@ sub _parse_map_field {
 
     my $name = $self->_expect_name->{value};
     $self->_expect( 'punct', '=' );
-    my $number = $self->_parse_field_number;
+    my $number  = $self->_parse_field_number;
+    my $options = $self->_parse_field_options;    # optional [opt = ...]
     $self->_expect( 'punct', ';' );
 
     # MapEntry name is the CamelCase field name + 'Entry' (protoc convention).
@@ -638,7 +682,8 @@ sub _parse_map_field {
         type_name => $entry_full,
         label     => 'repeated',
         map_entry => $entry_full,
-        json_name => _camel_case($name),
+        json_name => $options->{json_name} // _camel_case($name),
+        options   => $options,
     );
 
     return ( $field, $entry );
