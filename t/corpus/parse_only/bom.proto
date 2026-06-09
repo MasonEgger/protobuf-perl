@@ -1,0 +1,3 @@
+﻿syntax = "proto3";
+package corpus.bom;
+message WithBom { string x = 1; }

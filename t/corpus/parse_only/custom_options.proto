@@ -1,0 +1,12 @@
+// ABOUTME: top-level extend declaring a custom option, plus its use on a field.
+syntax = "proto3";
+package corpus.opt;
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FieldOptions {
+  string sensitivity = 50001;
+}
+
+message User {
+  string email = 1 [(sensitivity) = "high", json_name = "emailAddress"];
+}
