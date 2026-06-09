@@ -26,6 +26,21 @@ my %DEFAULT_OPAQUE_IMPORT = map { $_ => 1 } qw(
     google/protobuf/compiler/plugin.proto
 );
 
+# Absolute path to the distribution's bundled proto include root (share/proto),
+# resolved relative to this module — the same dependency-free approach
+# Protobuf::Conformance uses to find its vendored descriptor set, so no
+# File::ShareDir runtime dependency is added. undef when the share tree is not
+# present (e.g. an installed dist that did not relocate it here), in which case
+# the WKT auto-include is simply a no-op. Computed once at load.
+my $BUNDLED_PROTO_ROOT = do {
+    my ( $vol, $dir ) = File::Spec->splitpath(__FILE__);
+    # $dir is .../lib/Protobuf/ ; the share tree sits at the dist root, two
+    # directories up from lib/Protobuf.
+    my $proto = File::Spec->catdir( $vol . $dir,
+        File::Spec->updir, File::Spec->updir, 'share', 'proto' );
+    ( -d $proto ) ? Cwd::abs_path($proto) : undef;
+};
+
 class Protobuf::Parser {
     field $include_paths :param = [];   # arrayref of search-root directories
 
@@ -34,9 +49,24 @@ class Protobuf::Parser {
     # contents the schema does not need.
     field $opaque_imports :param = [];
 
+    # Auto-include the distribution's bundled well-known-type protos (share/proto)
+    # so a .proto importing google/protobuf/* resolves without the caller wiring
+    # up an include path for them — matching protoc/prost/protobuf.js, which all
+    # ship the WKTs built in. On by default; set 0 for fully-hermetic parsing.
+    field $include_wkt :param = 1;
+
     # Cache of parsed files keyed by absolute path, so a file imported (or
     # re-requested) more than once yields the identical Schema::File object.
     field $cache = {};
+
+    # Append the bundled WKT root to the search path (when enabled and present),
+    # AFTER the caller's paths so a user-supplied copy of a WKT wins on conflict.
+    # A fresh arrayref is built so the caller's own array is never mutated.
+    ADJUST {
+        if ( $include_wkt && defined $BUNDLED_PROTO_ROOT ) {
+            $include_paths = [ @$include_paths, $BUNDLED_PROTO_ROOT ];
+        }
+    }
 
     # Locate $rel under the include_paths (first match wins) and return its
     # absolute path; raises ImportNotFound when no root contains it.
@@ -417,7 +447,7 @@ once yields the identical L<Protobuf::Schema::File> object.
 
 =over 4
 
-=item new(include_paths => \@dirs, opaque_imports => \@paths)
+=item new(include_paths => \@dirs, opaque_imports => \@paths, include_wkt => 1)
 
 Construct a parser. C<include_paths> is an ordered list of directories searched
 by C<parse_file>; the first directory containing the requested relative path
@@ -426,6 +456,18 @@ wins.
 C<opaque_imports> is an optional list of import paths to treat as opaque
 built-ins (merged with the standard set; see C<parse_with_imports>), for a
 private proto2 dependency whose contents the schema does not need.
+
+C<include_wkt> (default true) auto-includes the distribution's bundled
+well-known-type protos (C<share/proto>), so a C<.proto> that imports
+C<google/protobuf/timestamp.proto>, C<field_mask.proto>, C<struct.proto>, etc.
+resolves without the caller configuring an include path for them — matching how
+C<protoc>, C<prost>, and C<protobuf.js> ship the WKTs built in. The bundled root
+is appended I<after> C<include_paths>, so a caller's own copy of a WKT wins on
+conflict. Set C<< include_wkt => 0 >> for fully-hermetic parsing (only the
+explicit C<include_paths> are searched). The bundled root is located relative to
+the installed module; when it is not present the option is simply a no-op.
+(C<google/protobuf/descriptor.proto> remains an opaque built-in regardless — see
+C<parse_with_imports> — because it is proto2.)
 
 =item parse_file($relative_path)
 
