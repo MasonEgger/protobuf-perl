@@ -294,6 +294,62 @@ True only when the field is explicitly flagged packed, is repeated, AND its
 type is a packable scalar (numeric, bool, or enum). String, bytes, and message
 types are never packed.
 
+=item C<is_group>
+
+True for a C<TYPE_GROUP> field (modeled as a delimited message).
+
+=back
+
+=head1 EFFECTIVE FIELD PROPERTIES
+
+These reflect the field's construction values or, once the resolver has run, its
+resolved feature set.
+
+=over 4
+
+=item C<default_value>
+
+The proto2 C<[default = ...]> value, or C<undef> (proto3 fixes scalar defaults
+to the zero value).
+
+=item C<extendee>
+
+For an extension field, the fully-qualified name of the extended message;
+C<undef> otherwise.
+
+=item C<is_extension>
+
+True when the field is an C<extend>-block member.
+
+=item C<features>
+
+The field's explicit feature overrides before resolution, or its resolved
+L<Protobuf::Schema::Features> afterward.
+
+=item C<set_features($resolved)>
+
+The resolver installs the field's effective L<Protobuf::Schema::Features>.
+Returns C<$self>.
+
+=item C<presence>
+
+The field's effective presence: C<'implicit'>, C<'explicit'>, or
+C<'legacy_required'>.
+
+=item C<has_presence>
+
+True when the field tracks explicit presence (the codec uses this to decide
+default-omit).
+
+=item C<message_encoding>
+
+The field's effective embedded-message wire encoding: C<'delimited'> or
+C<'length_prefixed'>.
+
+=item C<utf8_validation>
+
+The field's effective string UTF-8 validation: C<'VERIFY'> or C<'NONE'>.
+
 =back
 
 =head1 LICENSE

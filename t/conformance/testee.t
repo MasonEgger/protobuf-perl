@@ -200,7 +200,16 @@ SKIP: {
 
     ok( !$err, 'run_stdio responds without deadlock (flushes each frame)' )
         or diag("stdio round-trip failed: $err");
-    my $decoded = $err ? undef : eval { $codec->decode( $TESTMSG, $resp_bytes ) };
+
+    # The framed body is a ConformanceResponse; decode it as such, then decode
+    # its protobuf_payload as the test message. (The earlier shortcut decoded the
+    # response bytes directly as TESTMSG, which only ever "worked" by exploiting
+    # the lenient wire-type mis-segmentation that B-008 now rejects.)
+    my $resp = $err ? undef : eval { $codec->decode( $RESPONSE, $resp_bytes ) };
+    my $decoded =
+        ( $resp && $resp->{protobuf_payload} )
+        ? eval { $codec->decode( $TESTMSG, $resp->{protobuf_payload} ) }
+        : undef;
     is( $decoded && $decoded->{optional_int32},
         42, 'stdio round-trip returns the re-encoded payload' );
 }

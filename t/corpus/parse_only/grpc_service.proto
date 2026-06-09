@@ -1,0 +1,20 @@
+// ABOUTME: real-world-shaped gRPC service exercising aggregate custom options
+// (google.api.http style), adjacent string concatenation, and keyword field names.
+syntax = "proto3";
+package corpus.grpc;
+import "google/protobuf/descriptor.proto";
+
+message GetRequest {
+  string name = 1;
+  // keyword identifiers as field names (contextual keywords).
+  string service = 2;
+  string message = 3;
+  int32  map = 4;
+}
+message Reply { string text = 1; }
+
+service Lookup {
+  rpc Get (GetRequest) returns (Reply) {
+    option (google.api.http) = { get: "/v1/" "items" body: "*" };
+  }
+}

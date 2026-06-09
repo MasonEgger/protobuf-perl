@@ -14,16 +14,17 @@ use Protobuf::Exception;
 # proto3 grammar keywords plus the scalar type names, per spec §4.4.
 my %KEYWORD = map { $_ => 1 } qw(
     syntax import weak public package option
-    enum message service rpc returns stream
+    enum message service rpc returns stream extend
     repeated optional reserved to max oneof map
     double float int32 int64 uint32 uint64
     sint32 sint64 fixed32 fixed64 sfixed32 sfixed64
     bool string bytes
 );
 
-# Single-character punctuation marks, each its own token.
+# Single-character punctuation marks, each its own token. `:` is the aggregate
+# option-value separator (e.g. option (http) = { get: "/v1" }).
 my %PUNCT = map { $_ => 1 }
-    ( '{', '}', '(', ')', '[', ']', '=', ',', ';', '<', '>', '.' );
+    ( '{', '}', '(', ')', '[', ']', '=', ',', ';', '<', '>', '.', ':' );
 
 # Simple single-character string escapes -> their decoded byte.
 my %SIMPLE_ESCAPE = (
@@ -42,8 +43,16 @@ my %SIMPLE_ESCAPE = (
 
 sub new {
     my ( $class, %args ) = @_;
+    my $source = $args{source};
+
+    # Strip a leading UTF-8 BOM (EF BB BF). Many editors prepend one; protoc and
+    # other proto tooling ignore it, so it must not become an "unexpected
+    # character" at the very first byte (B-006).
+    $source =~ s/\A\x{ef}\x{bb}\x{bf}//
+        if defined $source;
+
     my $self = {
-        source => $args{source},
+        source => $source,
         pos    => 0,
         line   => 1,
         col    => 1,
@@ -228,14 +237,41 @@ sub _read_escape {
         return chr oct $oct;
     }
 
+    # Unicode escapes: \uXXXX (4 hex) and \UXXXXXXXX (8 hex), each producing the
+    # UTF-8 encoding of the codepoint (spec §4.4).
+    if ( $ch eq 'u' ) {
+        $self->_advance;
+        return $self->_read_unicode_escape(4);
+    }
+    if ( $ch eq 'U' ) {
+        $self->_advance;
+        return $self->_read_unicode_escape(8);
+    }
+
     # Simple single-character escape.
     if ( exists $SIMPLE_ESCAPE{$ch} ) {
         $self->_advance;
         return $SIMPLE_ESCAPE{$ch};
     }
 
-    # Unknown escape: keep the character literally (lenient).
-    return $self->_advance;
+    # Anything else is malformed input. The old lenient catch-all silently
+    # dropped the backslash, hiding the user's typo (B-004 / B-016).
+    $self->_error("unknown escape sequence '\\$ch'");
+}
+
+# Read exactly $count hex digits (cursor is past the u/U) and return the UTF-8
+# byte encoding of that codepoint. Fewer than $count hex digits is an error.
+sub _read_unicode_escape {
+    my ( $self, $count ) = @_;
+    my $hex = '';
+    while ( length($hex) < $count && $self->_peek =~ /[0-9A-Fa-f]/ ) {
+        $hex .= $self->_advance;
+    }
+    $self->_error("\\u/\\U escape needs $count hex digits")
+        unless length($hex) == $count;
+    my $bytes = chr hex $hex;
+    utf8::encode($bytes);
+    return $bytes;
 }
 
 # Read an integer (dec/hex/oct) or float literal, decoding to a numeric value.
@@ -281,6 +317,11 @@ sub _read_number {
             if ( $self->_peek eq '+' || $self->_peek eq '-' ) {
                 $text .= $self->_advance;
             }
+            # The exponent must carry at least one digit: `1e`, `1e+`, `1.5e`
+            # are malformed and must not silently lex as the mantissa (B-010).
+            $self->_error( 'malformed float literal (empty exponent)',
+                $line, $col )
+                unless $self->_peek =~ /[0-9]/;
         }
         else {
             last;

@@ -152,6 +152,25 @@ A hashref of message-level options.
 
 True when this message is a synthetic C<map<K,V>> entry type.
 
+=item C<extension_ranges>
+
+An arrayref of C<[lo, hi]> extension-number ranges the message reserves for
+extensions.
+
+=item C<extensions>
+
+An arrayref of extension L<Protobuf::Schema::Field> declarations defined inside
+this message (the members of nested C<extend> blocks).
+
+=item C<message_set_wire_format>
+
+True when the message uses the legacy MessageSet wire format.
+
+=item C<features>
+
+The message's explicit feature overrides before resolution, or its resolved
+L<Protobuf::Schema::Features> afterward.
+
 =back
 
 =head1 LICENSE

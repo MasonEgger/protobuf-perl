@@ -25,7 +25,11 @@ my %KEYWORD = map { $_ => 1 } qw(
     wantarray ref bless tie untie
     defined undef scalar
     eval die warn
-    new
+    length lc uc lcfirst ucfirst sprintf
+    time int abs sqrt
+    index rindex substr pos quotemeta
+    pack unpack vec ord hex oct
+    new descriptor to_hashref encode decode
 );
 
 # accessor_name($field_name) -> the base accessor name for the generated class.

@@ -9,12 +9,9 @@ use Test::More;
 eval { require Test::Pod::Coverage; Test::Pod::Coverage->import; 1 }
     or plan skip_all => 'Test::Pod::Coverage required for POD coverage testing';
 
-# trustme: accept the documented-as-a-group accessor and adapter methods that
-# the per-field code generator installs, plus the constructor `new` (which is
-# documented under each class's SYNOPSIS/METHODS rather than as a named =head2).
-# Everything in the public API surface must otherwise carry POD.
-my %TRUSTME = (
-    private => [ qr/^new$/ ],
-);
-
-all_pod_coverage_ok( { %TRUSTME, also_private => [] } );
+# `new` is documented under each class's SYNOPSIS/METHODS rather than as a named
+# =head2, so accept it. Use also_private (which ADDS to Pod::Coverage's defaults)
+# rather than private (which REPLACES them): replacing the defaults drops the
+# built-in "underscore-prefixed subs are private" rule and wrongly counts every
+# internal helper as undocumented. Everything else public must carry POD.
+all_pod_coverage_ok( { also_private => [ qr/^new$/ ] } );

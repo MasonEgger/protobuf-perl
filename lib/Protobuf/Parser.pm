@@ -7,6 +7,7 @@ no warnings 'experimental::class';
 
 use File::Spec;
 use Cwd ();
+use Scalar::Util ();
 
 use Protobuf::Parser::Grammar;
 use Protobuf::Schema;
@@ -54,9 +55,16 @@ class Protobuf::Parser {
     # Protobuf::Schema with all of them added. Imports are followed via parse_file,
     # so the abs-path cache deduplicates diamond imports (each file loads once).
     # A circular import chain raises Protobuf::Exception::Parser::ImportCycle.
-    method parse_with_imports ($rel) {
+    method parse_with_imports ($rel, %opts) {
         my $schema = Protobuf::Schema->new;
         $self->_collect_imports( $rel, $schema, {}, {} );
+
+        # Resolve cross-file type references by default so the returned schema is
+        # immediately usable (B-014). Pass resolve => 0 to get the unresolved
+        # form (e.g. to inspect a partial graph whose referenced types live in
+        # files outside the import closure).
+        my $resolve = exists $opts{resolve} ? $opts{resolve} : 1;
+        $schema->resolve if $resolve;
         return $schema;
     }
 
@@ -95,9 +103,11 @@ class Protobuf::Parser {
         )->parse;
     }
 
-    # Render a Schema::File back into canonical proto3 source text. Enough to
-    # round-trip a parsed file through parse -> serialize -> parse into an
-    # equivalent schema (spec T-parse-1).
+    # Render a Schema::File back into canonical proto3 source text. The output
+    # round-trips: parsing it yields an equivalent schema (spec T-parse-1). The
+    # full grammar is emitted — file/message options, imports, file- and
+    # nested-scope enums, services, oneofs, maps, reserved ranges/names, and
+    # extension (`extend`) blocks — not just trivial messages.
     sub serialize ( $class, $file ) {
         my @lines = ( 'syntax = "proto3";' );
 
@@ -112,38 +122,194 @@ class Protobuf::Parser {
             push @lines, qq{import $qual"$import->{path}";};
         }
 
-        push @lines, _serialize_message($_) for @{ $file->messages };
+        push @lines, _serialize_option_line( $_, $file->options->{$_}, '' )
+            for sort keys %{ $file->options };
 
-        return join( "\n", @lines ) . "\n";
+        push @lines, _serialize_enum( $_, '' )    for @{ $file->enums };
+        push @lines, _serialize_message( $_, '' ) for @{ $file->messages };
+        push @lines, _serialize_service( $_, '' ) for @{ $file->services };
+        push @lines, _serialize_extends( $file->extensions, '' );
+
+        return join( "\n", grep { length } @lines ) . "\n";
     }
 
-    # Render one Schema::Message (recursively) as canonical proto3 text.
-    sub _serialize_message ($message) {
+    # Render one Schema::Message (recursively) at the given indent.
+    sub _serialize_message ($message, $indent) {
+        my $inner = "$indent  ";
         my @body;
-        for my $field ( @{ $message->fields } ) {
-            push @body, '  ' . _serialize_field($field);
+
+        push @body, _serialize_option_line( $_, $message->options->{$_}, $inner )
+            for sort keys %{ $message->options };
+
+        # Map a field's owning entry message (the synthetic <Field>Entry) by name,
+        # so a map field renders as map<K,V> and its entry is not emitted twice.
+        my %entry_by_name =
+            map { $_->full_name => $_ }
+            grep { $_->is_map_entry } @{ $message->nested_messages };
+
+        # Group oneof member field numbers so they render inside their oneof block
+        # rather than as standalone fields.
+        my %in_oneof;
+        for my $oneof ( @{ $message->oneofs } ) {
+            $in_oneof{ $_->number } = 1 for @{ $oneof->fields };
         }
-        push @body, _indent( _serialize_message($_) )
-            for @{ $message->nested_messages };
+
+        for my $field ( @{ $message->fields } ) {
+            next if $in_oneof{ $field->number };
+            if ( $field->is_map ) {
+                push @body,
+                    _serialize_map_field( $field,
+                    $entry_by_name{ $field->map_entry }, $inner );
+            }
+            else {
+                push @body, $inner . _serialize_field($field);
+            }
+        }
+
+        push @body, _serialize_oneof( $_, $inner ) for @{ $message->oneofs };
+
+        push @body, _serialize_enum( $_, $inner ) for @{ $message->nested_enums };
+
+        for my $nested ( @{ $message->nested_messages } ) {
+            next if $nested->is_map_entry;    # synthetic; rendered as map<K,V>
+            push @body, _serialize_message( $nested, $inner );
+        }
+
+        push @body, _serialize_reserved( $message, $inner );
+        push @body, _serialize_extends( $message->extensions, $inner );
 
         my $name = $message->name;
-        return "message $name {\n" . join( "\n", @body ) . "\n}";
+        return "$indent" . "message $name {\n"
+            . join( "\n", grep { length } @body )
+            . "\n$indent}";
     }
 
-    # Render one Schema::Field as a `[label ]type name = number;` declaration.
+    # Render one Schema::Field as a `[label ]type name = number[ options];`.
     sub _serialize_field ($field) {
         my $prefix =
             $field->label eq 'repeated' ? 'repeated '
             : $field->label eq 'optional' ? 'optional '
             :                               '';
         my $type = $field->is_message ? $field->type_name : $field->type;
-        return sprintf '%s%s %s = %d;', $prefix, $type, $field->name,
-            $field->number;
+        return sprintf '%s%s %s = %d%s;', $prefix, $type, $field->name,
+            $field->number, _serialize_field_options($field);
     }
 
-    # Indent every line of $text by two spaces (for nested-message bodies).
-    sub _indent ($text) {
-        return join "\n", map { "  $_" } split /\n/, $text;
+    # Render a map<K,V> field from its synthetic entry message (key=field 1,
+    # value=field 2). Falls back to the raw field when the entry is unavailable.
+    sub _serialize_map_field ($field, $entry, $indent) {
+        return $indent . _serialize_field($field) unless $entry;
+        my ($key)   = grep { $_->number == 1 } @{ $entry->fields };
+        my ($value) = grep { $_->number == 2 } @{ $entry->fields };
+        my $vtype = $value->is_message ? $value->type_name : $value->type;
+        return sprintf '%smap<%s, %s> %s = %d%s;', $indent, $key->type,
+            $vtype, $field->name, $field->number,
+            _serialize_field_options($field);
+    }
+
+    # Render a oneof block with its member fields (members carry no label).
+    sub _serialize_oneof ($oneof, $indent) {
+        my $inner = "$indent  ";
+        my @members = map { $inner . _serialize_field($_) } @{ $oneof->fields };
+        return "$indent" . 'oneof ' . $oneof->name . " {\n"
+            . join( "\n", @members ) . "\n$indent}";
+    }
+
+    # Render an enum (recursively scoped) at the given indent.
+    sub _serialize_enum ($enum, $indent) {
+        my $inner = "$indent  ";
+        my @body;
+        push @body, _serialize_option_line( $_, $enum->options->{$_}, $inner )
+            for sort keys %{ $enum->options };
+        push @body, sprintf( '%s%s = %d;', $inner, $_->{name}, $_->{number} )
+            for @{ $enum->values };
+        return "$indent" . 'enum ' . $enum->name . " {\n"
+            . join( "\n", @body ) . "\n$indent}";
+    }
+
+    # Render a service and its rpc methods at the given indent.
+    sub _serialize_service ($service, $indent) {
+        my $inner = "$indent  ";
+        my @body;
+        push @body, _serialize_option_line( $_, $service->options->{$_}, $inner )
+            for sort keys %{ $service->options };
+        for my $m ( @{ $service->methods } ) {
+            my $cs = $m->{client_streaming} ? 'stream ' : '';
+            my $ss = $m->{server_streaming} ? 'stream ' : '';
+            push @body,
+                sprintf( '%srpc %s (%s%s) returns (%s%s);',
+                $inner, $m->{name}, $cs, $m->{input_type}, $ss,
+                $m->{output_type} );
+        }
+        return "$indent" . 'service ' . $service->name . " {\n"
+            . join( "\n", @body ) . "\n$indent}";
+    }
+
+    # Render the message's reserved number ranges and names, or '' when none.
+    sub _serialize_reserved ($message, $indent) {
+        my @lines;
+        if ( @{ $message->reserved_numbers } ) {
+            my @ranges = map {
+                my ( $lo, $hi ) = @$_;
+                $lo == $hi ? "$lo" : "$lo to $hi";
+            } @{ $message->reserved_numbers };
+            push @lines, $indent . 'reserved ' . join( ', ', @ranges ) . ';';
+        }
+        if ( @{ $message->reserved_names } ) {
+            my @names = map {qq{"$_"}} @{ $message->reserved_names };
+            push @lines, $indent . 'reserved ' . join( ', ', @names ) . ';';
+        }
+        return join "\n", @lines;
+    }
+
+    # Render extension declarations, grouped by extendee, or '' when none.
+    sub _serialize_extends ($extensions, $indent) {
+        return '' unless $extensions && @$extensions;
+        my $inner = "$indent  ";
+        my ( @order, %by_extendee );
+        for my $ext (@$extensions) {
+            push @order, $ext->extendee unless exists $by_extendee{ $ext->extendee };
+            push @{ $by_extendee{ $ext->extendee } }, $ext;
+        }
+        my @blocks;
+        for my $extendee (@order) {
+            my @fields =
+                map { $inner . _serialize_field($_) } @{ $by_extendee{$extendee} };
+            push @blocks, "$indent" . "extend $extendee {\n"
+                . join( "\n", @fields ) . "\n$indent}";
+        }
+        return join "\n", @blocks;
+    }
+
+    # Render an `option name = value;` line at the given indent.
+    sub _serialize_option_line ($name, $value, $indent) {
+        return sprintf '%soption %s = %s;', $indent, $name,
+            _serialize_option_value($value);
+    }
+
+    # Render a field's bracketed option list (` [a = 1, b = "x"]`), or '' when the
+    # field has no options.
+    sub _serialize_field_options ($field) {
+        my $options = $field->options;
+        return '' unless $options && %$options;
+        my @pairs = map { "$_ = " . _serialize_option_value( $options->{$_} ) }
+            sort keys %$options;
+        return ' [' . join( ', ', @pairs ) . ']';
+    }
+
+    # Render an option value: an aggregate hashref as { k: v ... }, a number bare,
+    # anything else as a quoted, escaped string. This round-trips through the
+    # parser (which stores scalar option values uniformly).
+    sub _serialize_option_value ($value) {
+        if ( ref $value eq 'HASH' ) {
+            my @pairs =
+                map { "$_: " . _serialize_option_value( $value->{$_} ) }
+                sort keys %$value;
+            return '{ ' . join( ' ', @pairs ) . ' }';
+        }
+        return $value if Scalar::Util::looks_like_number($value);
+        ( my $escaped = $value ) =~ s/(["\\])/\\$1/g;
+        return qq{"$escaped"};
     }
 }
 
@@ -170,9 +336,9 @@ Protobuf::Parser - parse .proto files into schema definitions
     # Or parse a string:
     my $file = $parser->parse_string('foo.proto', $proto_source);
 
-    # Walk imports automatically into a full Protobuf::Schema:
+    # Walk imports automatically into a full, resolved Protobuf::Schema:
     my $schema = $parser->parse_with_imports('top.proto');
-    $schema->resolve;   # cross-file type references now linked
+    # (pass resolve => 0 to skip the resolve pass)
 
     # Round-trip a parsed file through canonical source:
     my $text = Protobuf::Parser->serialize($file);
@@ -202,7 +368,7 @@ path, so a subsequent C<parse_file> of the same file returns the same object.
 A file that no include path contains raises
 L<Protobuf::Exception::Parser::ImportNotFound>.
 
-=item parse_with_imports($relative_path)
+=item parse_with_imports($relative_path, %opts)
 
 Parse C<$relative_path> and every file it transitively C<import>s, returning a
 L<Protobuf::Schema> with all of them registered. Each imported file is loaded
@@ -210,8 +376,12 @@ through C<parse_file>, so the absolute-path cache deduplicates diamond imports:
 a file reachable by more than one path is parsed and added exactly once. Files
 are added in dependency order (imports before their importers). A circular
 import chain raises L<Protobuf::Exception::Parser::ImportCycle>; a missing
-imported file raises L<Protobuf::Exception::Parser::ImportNotFound>. Call
-C<< $schema->resolve >> on the result to link cross-file type references.
+imported file raises L<Protobuf::Exception::Parser::ImportNotFound>.
+
+The returned schema is B<resolved> by default — cross-file type references are
+linked, so it is immediately usable by the codec. Pass C<< resolve => 0 >> to
+skip the resolve pass and obtain the unresolved schema (for inspecting a partial
+graph whose referenced types lie outside the import closure).
 
 =item parse_string($name, $source)
 

@@ -219,10 +219,13 @@ for my $case (@round_trip_cases) {
 # as a Wire error (the group is never closed).
 {
     my ( $codec, $full ) = schema_with_message( field_f() );
-    # Tag for field 1 (unknown; the known field is 'f'), wire type 3 (group
-    # start): (1<<3)|3 = 0x0b, with no EGROUP following.
+    # Tag for field 2 (unknown; the known field 'f' is number 1), wire type 3
+    # (group start): (2<<3)|3 = 0x13, with no EGROUP following. An UNKNOWN group
+    # field is skipped to its matching EGROUP; a bare unterminated one is a Wire
+    # error. (Using a KNOWN field number here would instead be a wire-type
+    # mismatch — see t/codec/range_and_wire_type.t for that case, B-008.)
     my $err;
-    eval { $codec->decode( $full, "\x0b" ); 1 } or $err = $@;
+    eval { $codec->decode( $full, "\x13" ); 1 } or $err = $@;
     ok( $err, '11.6: unterminated group dies' );
     isa_ok( $err, 'Protobuf::Exception::Wire',
         '11.6: unterminated group -> Wire error' );

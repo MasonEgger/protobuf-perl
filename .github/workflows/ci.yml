@@ -35,13 +35,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cpanm --notest --installdeps .
+          # --with-develop pulls the author-only POD-test deps (Test::Pod,
+          # Test::Pod::Coverage) so the xt/ tests actually RUN in CI rather than
+          # skipping silently and letting doc rot through (B-019).
+          cpanm --notest --installdeps --with-develop .
           cpanm --notest Perl::Critic
 
       # Blocking gate: lint + the full unit suite. The conformance suite runs in
       # its own job below.
       - name: Run checks
         run: just check
+
+      # Blocking gate: author POD tests (syntax + coverage). With the develop
+      # deps installed above these run for real; on a machine without them they
+      # skip cleanly, so doc rot only escapes a non-CI run (B-019).
+      - name: Author POD tests
+        run: prove -lr xt
 
       # Blocking gate: the full Dist::Zilla build + author tests (pod-syntax,
       # compile). Validates the distribution assembles, installs, and that the

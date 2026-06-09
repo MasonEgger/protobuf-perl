@@ -83,12 +83,22 @@ sub build {
     # method (the invocant is ignored either way).
     *{"${target}::descriptor"} = sub { return $message };
 
-    # new(\%fields): blessed hashref keyed by proto field name. An unknown key
-    # (not a declared field) raises Argument naming the offending key. Field
-    # values are stored verbatim; per-field setters are the typed entry point,
-    # but the constructor validates scalar types too for symmetry.
+    # new(\%fields): blessed hashref keyed by proto field name. The single
+    # argument MUST be a hashref (or omitted). A bare hash list — new(a => 1) —
+    # is rejected rather than silently dropping the data, as is any non-hashref
+    # argument (B-013). An unknown key (not a declared field) raises Argument
+    # naming the offending key. Field values are stored verbatim; per-field
+    # setters are the typed entry point, but the constructor validates scalar
+    # types too for symmetry.
     *{"${target}::new"} = sub {
         my ( $invocant, $init ) = @_;
+        if ( @_ > 2 || ( @_ == 2 && defined $init && ref $init ne 'HASH' ) ) {
+            Protobuf::Exception::Argument->throw(
+                message =>
+                    "$target->new expects a single hashref of fields"
+                    . ' (not a hash list or scalar)',
+            );
+        }
         my $self = bless {}, ( ref $invocant || $invocant );
         $init //= {};
 

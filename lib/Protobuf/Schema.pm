@@ -297,6 +297,12 @@ L<Protobuf::Exception::Schema::UnresolvedType>. C<type_ref> is the single mutabl
 field on L<Protobuf::Schema::Field>; it is written only here, via that class's
 narrow C<set_type_ref> setter. Returns the schema for chaining.
 
+=item extensions_for($extendee_full_name)
+
+Return the arrayref of extension L<Protobuf::Schema::Field>s registered against
+the message named C<$extendee_full_name> (collected from C<extend> blocks across
+every added file), or an empty arrayref when the message has no extensions.
+
 =back
 
 =cut

@@ -75,6 +75,8 @@ class Protobuf::Exception::Parser::UnsupportedSyntax :isa(Protobuf::Exception::P
 class Protobuf::Exception::Codec :isa(Protobuf::Exception) {}
 class Protobuf::Exception::Codec::TypeMismatch :isa(Protobuf::Exception::Codec) {}
 class Protobuf::Exception::Codec::UnknownType  :isa(Protobuf::Exception::Codec) {}
+class Protobuf::Exception::Codec::OutOfRange   :isa(Protobuf::Exception::Codec) {}
+class Protobuf::Exception::Codec::WireTypeMismatch :isa(Protobuf::Exception::Codec) {}
 
 # --- JSON -----------------------------------------------------------------
 class Protobuf::Exception::JSON :isa(Protobuf::Exception) {}
@@ -228,7 +230,9 @@ where the parse error was detected.
     |  '- Protobuf::Exception::Parser::UnsupportedSyntax  proto2 / unknown syntax
     |- Protobuf::Exception::Codec                runtime encode/decode error
     |  |- Protobuf::Exception::Codec::TypeMismatch        value/field type clash
-    |  '- Protobuf::Exception::Codec::UnknownType         no such type in schema
+    |  |- Protobuf::Exception::Codec::UnknownType         no such type in schema
+    |  |- Protobuf::Exception::Codec::OutOfRange          integer outside type range
+    |  '- Protobuf::Exception::Codec::WireTypeMismatch    wrong wire type on decode
     '- Protobuf::Exception::JSON                 JSON mapping error
        |- Protobuf::Exception::JSON::Parse               malformed JSON text
        '- Protobuf::Exception::JSON::WKT                 well-known-type mapping
