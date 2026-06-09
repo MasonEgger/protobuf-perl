@@ -350,9 +350,29 @@ class Protobuf::Parser {
             return '[' . join( ', ',
                 map { _serialize_option_value($_) } @$value ) . ']';
         }
-        return $value if Scalar::Util::looks_like_number($value);
-        ( my $escaped = $value ) =~ s/(["\\])/\\$1/g;
-        return qq{"$escaped"};
+        # Emit bare only when the value is already in canonical numeric form, so
+        # it re-parses to the same scalar. A numeric-LOOKING string ("1.0",
+        # "1e3", "007") is NOT canonical ("$value" ne $value+0), so it stays a
+        # quoted string and round-trips stably instead of collapsing to a number.
+        return $value
+            if Scalar::Util::looks_like_number($value)
+            && "$value" eq ( $value + 0 );
+        return q{"} . _escape_proto_string($value) . q{"};
+    }
+
+    # Escape a Perl string for emission inside a proto3 double-quoted literal.
+    # Backslash and quote are escaped; newline/CR/tab use their named escapes;
+    # any other control byte (< 0x20 or 0x7f) becomes a 3-digit octal escape.
+    # Without this, a value carrying a real newline (decoded from a \n in the
+    # source) would emit a raw newline and fail to re-parse (N-008). High bytes
+    # (UTF-8) are left as-is — the lexer reads them back unchanged.
+    sub _escape_proto_string ($s) {
+        $s =~ s/([\\"])/\\$1/g;
+        $s =~ s/\n/\\n/g;
+        $s =~ s/\r/\\r/g;
+        $s =~ s/\t/\\t/g;
+        $s =~ s/([\x00-\x08\x0b\x0c\x0e-\x1f\x7f])/sprintf '\\%03o', ord $1/ge;
+        return $s;
     }
 }
 
