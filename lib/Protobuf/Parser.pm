@@ -13,8 +13,26 @@ use Protobuf::Parser::Grammar;
 use Protobuf::Schema;
 use Protobuf::Exception;
 
+# Standard proto2 "well-known" imports that real proto3 files routinely import
+# to define custom options, but whose contents this library never needs (options
+# are stored opaquely and never resolved against these descriptor types). They
+# are treated as built-ins — satisfied without being parsed or even present on
+# the include path — exactly as protoc/buf treat them, so a graph importing them
+# parses cleanly instead of failing on their proto2 syntax. A user's OWN proto2
+# file is NOT in this set and still fails loud (proto3-only is a real
+# constraint). Pre-class lexical (the feature 'class' package-scoping rule).
+my %DEFAULT_OPAQUE_IMPORT = map { $_ => 1 } qw(
+    google/protobuf/descriptor.proto
+    google/protobuf/compiler/plugin.proto
+);
+
 class Protobuf::Parser {
     field $include_paths :param = [];   # arrayref of search-root directories
+
+    # Additional import paths the caller wants treated as opaque built-ins
+    # (merged with %DEFAULT_OPAQUE_IMPORT), for a private proto2 dependency whose
+    # contents the schema does not need.
+    field $opaque_imports :param = [];
 
     # Cache of parsed files keyed by absolute path, so a file imported (or
     # re-requested) more than once yields the identical Schema::File object.
@@ -68,11 +86,24 @@ class Protobuf::Parser {
         return $schema;
     }
 
+    # True when $rel is a well-known proto2 import (or a caller-declared one) to
+    # be satisfied opaquely rather than parsed.
+    method _is_opaque_import ($rel) {
+        return 1 if $DEFAULT_OPAQUE_IMPORT{$rel};
+        return ( grep { $_ eq $rel } @$opaque_imports ) ? 1 : 0;
+    }
+
     # Recursively parse $rel and its imports into $schema. $in_progress holds the
     # absolute paths currently on the import stack (cycle detection); $visited
     # holds those already added to $schema (so each file is added exactly once,
     # even across diamond imports).
     method _collect_imports ($rel, $schema, $in_progress, $visited) {
+        # A well-known proto2 import (e.g. descriptor.proto) is satisfied without
+        # being located or parsed: its types are never resolved (options are
+        # opaque), and it cannot be parsed by a proto3-only grammar anyway. The
+        # importing file still records the import, so serialize round-trips it.
+        return if $self->_is_opaque_import($rel);
+
         my $abs = $self->_resolve_path($rel);
 
         if ( $in_progress->{$abs} ) {
@@ -366,11 +397,15 @@ once yields the identical L<Protobuf::Schema::File> object.
 
 =over 4
 
-=item new(include_paths => \@dirs)
+=item new(include_paths => \@dirs, opaque_imports => \@paths)
 
 Construct a parser. C<include_paths> is an ordered list of directories searched
 by C<parse_file>; the first directory containing the requested relative path
 wins.
+
+C<opaque_imports> is an optional list of import paths to treat as opaque
+built-ins (merged with the standard set; see C<parse_with_imports>), for a
+private proto2 dependency whose contents the schema does not need.
 
 =item parse_file($relative_path)
 
@@ -394,6 +429,17 @@ The returned schema is B<resolved> by default — cross-file type references are
 linked, so it is immediately usable by the codec. Pass C<< resolve => 0 >> to
 skip the resolve pass and obtain the unresolved schema (for inspecting a partial
 graph whose referenced types lie outside the import closure).
+
+B<Well-known proto2 imports.> Real proto3 files routinely import the canonical
+C<google/protobuf/descriptor.proto> (which is itself proto2) to define custom
+options. Because this library stores options opaquely and never resolves those
+descriptor types, such imports are treated as B<built-ins>: satisfied without
+being located or parsed, exactly as C<protoc> treats them. The standard set is
+C<google/protobuf/descriptor.proto> and C<google/protobuf/compiler/plugin.proto>;
+extend it per parser via C<< opaque_imports => [...] >>. A proto2 file that is
+B<not> well-known is still parsed and therefore still raises
+L<Protobuf::Exception::Parser::UnsupportedSyntax> — proto3-only is a real
+constraint, surfaced loudly rather than silently skipped.
 
 =item parse_string($name, $source)
 
