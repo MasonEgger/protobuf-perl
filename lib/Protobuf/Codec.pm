@@ -11,6 +11,7 @@ use Encode ();
 use Protobuf::Exception;
 use Protobuf::Wire ();
 use Protobuf::Wire::Tag ();
+use Protobuf::IntRange ();
 
 # 2**64 and 2**63 as Math::BigInt, used to convert negative int32/int64 values
 # to and from their proto3 two's-complement 64-bit varint representation. proto3
@@ -573,15 +574,32 @@ class Protobuf::Codec {
             $bad = 1 unless Scalar::Util::looks_like_number($value);
         }
 
-        return unless $bad;
+        if ($bad) {
+            my $got = ref $value ? ( ref $value ) : "'$value'";
+            Protobuf::Exception::Codec::TypeMismatch->throw(
+                message => sprintf(
+                    'field %s expected %s, got %s',
+                    $field->name, $field->type, $got,
+                ),
+            );
+        }
 
-        my $got = ref $value ? ( ref $value ) : "'$value'";
-        Protobuf::Exception::Codec::TypeMismatch->throw(
-            message => sprintf(
-                'field %s expected %s, got %s',
-                $field->name, $field->type, $got,
-            ),
-        );
+        # Range: an integer-typed field must carry a value within its type's
+        # bounds. protoc refuses to encode an out-of-range integer; we do the
+        # same rather than silently truncating to the low 32/64 bits on the wire
+        # (B-007). The shared Protobuf::IntRange table is the source of truth.
+        my $type = $field->type;
+        if ( Protobuf::IntRange::is_integer_type($type)
+            && !Protobuf::IntRange::in_range( $type, $value ) )
+        {
+            Protobuf::Exception::Codec::OutOfRange->throw(
+                message => sprintf(
+                    'field %s value %s is out of range for %s',
+                    $field->name, "$value", $type,
+                ),
+            );
+        }
+        return;
     }
 
     # encode_json($full_name, $values, %opts) -> a canonical proto3 JSON string.
@@ -735,6 +753,19 @@ class Protobuf::Codec {
             if ( !$spec ) {
                 $rest = Protobuf::Wire::skip_field( $wire_type, $rest );
                 next;
+            }
+
+            # The tag's wire type must match the field's declared scalar type.
+            # A mismatch (e.g. an int32 field arriving as I32) would otherwise
+            # mis-segment the stream and surface a misleading error several
+            # records later; reject it explicitly instead (B-008).
+            if ( $wire_type != $spec->{wire} ) {
+                Protobuf::Exception::Codec::WireTypeMismatch->throw(
+                    message => sprintf(
+                        'field %s (%s) expected wire type %d but got %d',
+                        $field->name, $field->type, $spec->{wire}, $wire_type,
+                    ),
+                );
             }
 
             ( my $value, $rest ) =

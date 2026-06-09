@@ -13,6 +13,7 @@ use Scalar::Util ();
 
 use Protobuf::Exception;
 use Protobuf::WKT;
+use Protobuf::IntRange ();
 
 # The set of scalar proto3 types whose JSON form is a quoted decimal STRING,
 # not a JSON number (proto3 JSON spec, §4.9): every 64-bit integer type. A
@@ -30,22 +31,18 @@ my %NUMBER_TYPE = map { $_ => 1 } qw(
     int32 uint32 sint32 fixed32 sfixed32 float double
 );
 
-# Inclusive [min, max] range for each integer proto3 type, as Math::BigInt so
-# the 64-bit bounds are exact (a native float cannot hold 2^64-1). proto3 JSON
-# input must reject an integer field whose value falls outside this range, the
-# same as protoc. Held as a pre-class lexical for the feature 'class' scoping
-# rule.
-my %INT_RANGE = (
-    int32    => [ Math::BigInt->new('-2147483648'),          Math::BigInt->new('2147483647') ],
-    sint32   => [ Math::BigInt->new('-2147483648'),          Math::BigInt->new('2147483647') ],
-    sfixed32 => [ Math::BigInt->new('-2147483648'),          Math::BigInt->new('2147483647') ],
-    uint32   => [ Math::BigInt->new('0'),                    Math::BigInt->new('4294967295') ],
-    fixed32  => [ Math::BigInt->new('0'),                    Math::BigInt->new('4294967295') ],
-    int64    => [ Math::BigInt->new('-9223372036854775808'), Math::BigInt->new('9223372036854775807') ],
-    sint64   => [ Math::BigInt->new('-9223372036854775808'), Math::BigInt->new('9223372036854775807') ],
-    sfixed64 => [ Math::BigInt->new('-9223372036854775808'), Math::BigInt->new('9223372036854775807') ],
-    uint64   => [ Math::BigInt->new('0'),                    Math::BigInt->new('18446744073709551615') ],
-    fixed64  => [ Math::BigInt->new('0'),                    Math::BigInt->new('18446744073709551615') ],
+# Inclusive [min, max] range per integer proto3 type, sourced from the shared
+# Protobuf::IntRange table so the JSON input check and the wire encode check
+# cannot disagree about what protoc would accept. Held as a pre-class lexical
+# (the feature 'class' package-scoping trap) keyed the same as before, so the
+# downstream lookups ($INT_RANGE{$type} truthiness, @{...} for min/max) are
+# unchanged.
+my %INT_RANGE = map {
+    my @r = Protobuf::IntRange::range_for($_);
+    @r ? ( $_ => \@r ) : ()
+} qw(
+    int32 sint32 sfixed32 uint32 fixed32
+    int64 sint64 sfixed64 uint64 fixed64
 );
 
 # The largest finite magnitude representable in each floating proto3 type. A
