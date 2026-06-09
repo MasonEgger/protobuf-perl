@@ -274,6 +274,15 @@ Consume one field's payload (the tag must already be consumed) and return the
 remaining bytes. Raises L<Protobuf::Exception::Wire::Truncated> on a short
 payload and L<Protobuf::Exception::Wire::InvalidWireType> for unknown wire types.
 
+=head2 skip_group
+
+    my $rest = skip_group($payload_bytes, $field_number);
+
+Consume a group (the C<SGROUP> tag must already be consumed) up to and including
+its matching C<EGROUP> for C<$field_number>, handling nested groups, and return
+the remaining bytes. Raises L<Protobuf::Exception::Wire::Truncated> when the
+group is never closed.
+
 =head1 SEE ALSO
 
 L<Protobuf::Wire::Varint>, L<Protobuf::Wire::Tag>, L<Protobuf::Exception>

@@ -119,6 +119,16 @@ An arrayref of file-scope extension L<Protobuf::Schema::Field> declarations (the
 members of top-level C<extend> blocks), each tagged C<is_extension> with its
 C<extendee>. Empty when the file declares no extensions.
 
+=item C<edition>
+
+The file's edition (C<'proto2'>, C<'proto3'>, or C<'2023'>), defaulted from
+C<syntax> when not given explicitly.
+
+=item C<features>
+
+The file's explicit feature overrides before resolution, or its resolved
+L<Protobuf::Schema::Features> afterward.
+
 =back
 
 =head1 LICENSE

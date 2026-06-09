@@ -1331,6 +1331,21 @@ L<Protobuf::Exception::Schema> at codec construction (see L</new>).
 
 =back
 
+=head1 ACCESSORS
+
+=over 4
+
+=item C<schema>
+
+The resolved L<Protobuf::Schema> the codec is bound to.
+
+=item C<preserve_unknown_fields>
+
+True when the codec preserves unrecognized fields across a decode/encode
+round-trip (the C<preserve_unknown_fields> construction flag).
+
+=back
+
 =head1 LICENSE
 
 This software is licensed under the MIT license. See the C<LICENSE> file.

@@ -219,6 +219,14 @@ The C<.pm> path, relative to the output directory, for a L<Protobuf::Schema::Fil
 
 Returns the C<.pm> source text for a file.
 
+=head2 loader_package
+
+    loader_package($file, $prefix)
+
+The Perl package name of the generated loader module for a
+L<Protobuf::Schema::File> (the module that reconstructs the file's schema and
+installs its classes), derived from the file name and optional C<$prefix>.
+
 =head1 LICENSE
 
 This software is licensed under the MIT license. See the C<LICENSE> file.

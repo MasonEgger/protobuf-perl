@@ -1191,6 +1191,37 @@ raises L<Protobuf::Exception::JSON::WKT>.
 
 =back
 
+=head1 ACCESSORS AND HELPERS
+
+=over 4
+
+=item C<codec>
+
+The L<Protobuf::Codec> this JSON adapter is bound to.
+
+=item C<schema>
+
+The resolved L<Protobuf::Schema> this JSON adapter is bound to.
+
+=item C<json_structure_for($full_name, $values)>
+
+The JSON-shaped structure (decoded data, not a string) for a codec-shaped
+message value named C<$full_name>: a bare special form for a WKT, or the
+camelCase object for an ordinary message. Used by the Any encoder.
+
+=item C<message_from_json($full_name, $json)>
+
+The codec-shaped message value for a JSON structure named C<$full_name>. The
+inverse of C<json_structure_for>.
+
+=item C<wkt_has_special_form($full_name)>
+
+True when C<$full_name> has a special (non-plain-object) JSON form, so an C<Any>
+wrapping it must carry the form under a reserved C<value> key.
+C<google.protobuf.Empty> is excluded (its JSON form is the plain C<{}>).
+
+=back
+
 =head1 LICENSE
 
 This software is licensed under the MIT license. See the C<LICENSE> file.

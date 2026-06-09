@@ -111,6 +111,22 @@ True when the enum permits two values to share a number.
 
 A hashref of enum-level options.
 
+=item C<closed>
+
+True when the enum is CLOSED (proto2/editions-proto2 semantics: an unknown
+numeric value is not preserved in-field); false (open) by default. The resolver
+derives this from the effective C<enum_type> feature.
+
+=item C<features>
+
+The enum's explicit feature overrides before resolution, or its resolved
+L<Protobuf::Schema::Features> afterward.
+
+=item C<set_features($resolved)>
+
+The resolver installs the enum's effective L<Protobuf::Schema::Features> and
+derives C<closed> from it. Returns C<$self>.
+
 =back
 
 =head1 CONSTRUCTION INVARIANTS

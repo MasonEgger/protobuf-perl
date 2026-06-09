@@ -54,9 +54,16 @@ class Protobuf::Parser {
     # Protobuf::Schema with all of them added. Imports are followed via parse_file,
     # so the abs-path cache deduplicates diamond imports (each file loads once).
     # A circular import chain raises Protobuf::Exception::Parser::ImportCycle.
-    method parse_with_imports ($rel) {
+    method parse_with_imports ($rel, %opts) {
         my $schema = Protobuf::Schema->new;
         $self->_collect_imports( $rel, $schema, {}, {} );
+
+        # Resolve cross-file type references by default so the returned schema is
+        # immediately usable (B-014). Pass resolve => 0 to get the unresolved
+        # form (e.g. to inspect a partial graph whose referenced types live in
+        # files outside the import closure).
+        my $resolve = exists $opts{resolve} ? $opts{resolve} : 1;
+        $schema->resolve if $resolve;
         return $schema;
     }
 
@@ -170,9 +177,9 @@ Protobuf::Parser - parse .proto files into schema definitions
     # Or parse a string:
     my $file = $parser->parse_string('foo.proto', $proto_source);
 
-    # Walk imports automatically into a full Protobuf::Schema:
+    # Walk imports automatically into a full, resolved Protobuf::Schema:
     my $schema = $parser->parse_with_imports('top.proto');
-    $schema->resolve;   # cross-file type references now linked
+    # (pass resolve => 0 to skip the resolve pass)
 
     # Round-trip a parsed file through canonical source:
     my $text = Protobuf::Parser->serialize($file);
@@ -202,7 +209,7 @@ path, so a subsequent C<parse_file> of the same file returns the same object.
 A file that no include path contains raises
 L<Protobuf::Exception::Parser::ImportNotFound>.
 
-=item parse_with_imports($relative_path)
+=item parse_with_imports($relative_path, %opts)
 
 Parse C<$relative_path> and every file it transitively C<import>s, returning a
 L<Protobuf::Schema> with all of them registered. Each imported file is loaded
@@ -210,8 +217,12 @@ through C<parse_file>, so the absolute-path cache deduplicates diamond imports:
 a file reachable by more than one path is parsed and added exactly once. Files
 are added in dependency order (imports before their importers). A circular
 import chain raises L<Protobuf::Exception::Parser::ImportCycle>; a missing
-imported file raises L<Protobuf::Exception::Parser::ImportNotFound>. Call
-C<< $schema->resolve >> on the result to link cross-file type references.
+imported file raises L<Protobuf::Exception::Parser::ImportNotFound>.
+
+The returned schema is B<resolved> by default — cross-file type references are
+linked, so it is immediately usable by the codec. Pass C<< resolve => 0 >> to
+skip the resolve pass and obtain the unresolved schema (for inspecting a partial
+graph whose referenced types lie outside the import closure).
 
 =item parse_string($name, $source)
 
