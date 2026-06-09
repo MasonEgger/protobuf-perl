@@ -10,9 +10,11 @@ use Protobuf::Exception;
 class Protobuf::Schema::Enum {
     field $name        :param;
     field $full_name   :param;
-    field $values      :param = [];     # arrayref of { name, number }
+    field $values      :param = [];     # arrayref of { name, number, options }
     field $allow_alias :param = 0;
     field $options     :param = {};
+    field $reserved_numbers :param = [];   # arrayref of [lo,hi] reserved ranges
+    field $reserved_names   :param = [];   # arrayref of reserved value names
     field $closed      :param = undef;  # 1=closed (proto2), 0=open (proto3);
                                         # resolver derives from enum_type feature
     field $features    :param = {};     # explicit overrides -> resolved FeatureSet
@@ -23,6 +25,8 @@ class Protobuf::Schema::Enum {
     method values      { $values }
     method allow_alias { $allow_alias }
     method options     { $options }
+    method reserved_numbers { $reserved_numbers }
+    method reserved_names   { $reserved_names }
     method features    { $features }
 
     # Closedness: 0 (open) by default — the proto3 default. The resolver sets it
@@ -126,6 +130,14 @@ L<Protobuf::Schema::Features> afterward.
 
 The resolver installs the enum's effective L<Protobuf::Schema::Features> and
 derives C<closed> from it. Returns C<$self>.
+
+=item C<reserved_numbers>
+
+An arrayref of reserved enum-value-number C<[lo, hi]> ranges.
+
+=item C<reserved_names>
+
+An arrayref of reserved enum value names.
 
 =back
 

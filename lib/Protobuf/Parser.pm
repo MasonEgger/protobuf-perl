@@ -221,10 +221,13 @@ class Protobuf::Parser {
         my @body;
         push @body, _serialize_option_line( $_, $enum->options->{$_}, $inner )
             for sort keys %{ $enum->options };
-        push @body, sprintf( '%s%s = %d;', $inner, $_->{name}, $_->{number} )
+        push @body,
+            sprintf( '%s%s = %d%s;', $inner, $_->{name}, $_->{number},
+            _serialize_option_list( $_->{options} ) )
             for @{ $enum->values };
+        push @body, _serialize_reserved( $enum, $inner );
         return "$indent" . 'enum ' . $enum->name . " {\n"
-            . join( "\n", @body ) . "\n$indent}";
+            . join( "\n", grep { length } @body ) . "\n$indent}";
     }
 
     # Render a service and its rpc methods at the given indent.
@@ -290,7 +293,12 @@ class Protobuf::Parser {
     # Render a field's bracketed option list (` [a = 1, b = "x"]`), or '' when the
     # field has no options.
     sub _serialize_field_options ($field) {
-        my $options = $field->options;
+        return _serialize_option_list( $field->options );
+    }
+
+    # Render a bracketed option list from an options hashref, or '' when empty.
+    # Shared by field, map-field, and enum-value rendering.
+    sub _serialize_option_list ($options) {
         return '' unless $options && %$options;
         my @pairs = map { "$_ = " . _serialize_option_value( $options->{$_} ) }
             sort keys %$options;
@@ -306,6 +314,10 @@ class Protobuf::Parser {
                 map { "$_: " . _serialize_option_value( $value->{$_} ) }
                 sort keys %$value;
             return '{ ' . join( ' ', @pairs ) . ' }';
+        }
+        if ( ref $value eq 'ARRAY' ) {
+            return '[' . join( ', ',
+                map { _serialize_option_value($_) } @$value ) . ']';
         }
         return $value if Scalar::Util::looks_like_number($value);
         ( my $escaped = $value ) =~ s/(["\\])/\\$1/g;
