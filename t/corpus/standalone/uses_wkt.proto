@@ -1,0 +1,13 @@
+// ABOUTME: a proto3 file importing well-known types by their canonical paths,
+// to exercise the parser's auto-include of the bundled WKTs (E-001) through the
+// ungated corpus canary — no explicit WKT include path is configured.
+syntax = "proto3";
+package corpus.wkt;
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+message UsesWkt {
+  google.protobuf.FieldMask mask = 1;
+  google.protobuf.Timestamp when = 2;
+  google.protobuf.Any payload = 3;
+}
